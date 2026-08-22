@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SentinelDispute | Autonomous Visa CE 3.0 & Mastercard FPT Defense Engine for Razorpay</title>
+    <meta name="description" content="Deterministic multi-agent chargeback defense engine executing Visa Compelling Evidence 3.0 and Mastercard First-Party Trust with tamper-evident cryptographic ledgers.">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="bg-mesh"></div>
+
+    <div class="app-container">
+        <!-- Navigation / Header -->
+        <header class="app-header">
+            <div class="brand-section">
+                <div class="brand-logo">🛡️</div>
+                <div class="brand-info">
+                    <h1>SentinelDispute</h1>
+                    <p>Autonomous Visa CE 3.0 & Mastercard FPT Defense Engine for Razorpay</p>
+                </div>
+            </div>
+            <div class="header-badges">
+                <div class="status-pill active" id="ledger-integrity-status">
+                    <span class="pulse-dot"></span> SHA-256 Ledger: Verified
+                </div>
+                <div class="status-pill">
+                    ⚡ LangGraph State Engine
+                </div>
+                <a href="/docs" target="_blank" class="btn btn-secondary" style="font-size: 11px;">
+                    API Docs &rarr;
+                </a>
+            </div>
+        </header>
+
+        <!-- Interactive Simulation Bar -->
+        <section class="simulation-bar">
+            <div class="sim-title">
+                <span>🎮 Live Scenario Simulator:</span>
+            </div>
+            <div class="sim-buttons">
+                <button class="btn btn-primary" onclick="runSimulation('visa_ce30')">
+                    ➕ Visa 10.4 (CE 3.0 Compliant)
+                </button>
+                <button class="btn btn-secondary" onclick="runSimulation('mc_fpt')">
+                    ➕ Mastercard 4837 (FPT Compliant)
+                </button>
+                <button class="btn btn-secondary" onclick="runSimulation('hitl_lookback')">
+                    ⚠️ Borderline Lookback &lt;120d (HITL)
+                </button>
+                <button class="btn btn-secondary" onclick="runSimulation('fraud')">
+                    🚫 First-Time Buyer Fraud (HITL)
+                </button>
+                <button id="btn-benchmark" class="btn btn-emerald" onclick="runFullBenchmark()">
+                    ⚡ Run 60-Scenario Benchmark
+                </button>
+            </div>
+        </section>
+
+        <!-- Executive KPI Cards -->
+        <section class="kpi-grid">
+            <div class="kpi-card kpi-cyan">
+                <div class="kpi-label">
+                    <span>Autonomous Yield</span>
+                    <span>📈</span>
+                </div>
+                <div class="kpi-value" id="kpi-yield-rate">0.0%</div>
+                <div class="kpi-subtext">
+                    <span class="highlight-up">&gt; 70.0% Target</span> | Auto-Dispatched
+                </div>
+            </div>
+
+            <div class="kpi-card kpi-emerald">
+                <div class="kpi-label">
+                    <span>Recovered GMV</span>
+                    <span>💰</span>
+                </div>
+                <div class="kpi-value" id="kpi-recovered-gmv">₹0</div>
+                <div class="kpi-subtext">
+                    Protected Merchant Capital
+                </div>
+            </div>
+
+            <div class="kpi-card kpi-amber">
+                <div class="kpi-label">
+                    <span>Disputes Ingested</span>
+                    <span>⚡</span>
+                </div>
+                <div class="kpi-value" id="kpi-total-disputes">0</div>
+                <div class="kpi-subtext">
+                    Webhook Evaluated
+                </div>
+            </div>
+
+            <div class="kpi-card kpi-purple">
+                <div class="kpi-label">
+                    <span>Ledger Hash Blocks</span>
+                    <span>🔗</span>
+                </div>
+                <div class="kpi-value" id="kpi-total-blocks">1</div>
+                <div class="kpi-subtext">
+                    <a href="javascript:void(0)" onclick="verifyLedgerOnDemand()" style="color: var(--accent-cyan); text-decoration: underline;">
+                        Verify Continuity &rarr;
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <!-- Charts & Analytics Section -->
+        <section class="analytics-section">
+            <div class="card-panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <span>📊 Confidence Score Distribution ($S_c \in [0, 100]$)</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="scoreDistChart"></canvas>
+                </div>
+            </div>
+
+            <div class="card-panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <span>🎯 Decision Yield Breakdown</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="outcomeChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Live Disputes Table -->
+        <section class="table-panel">
+            <div class="table-toolbar">
+                <div class="search-filter-group">
+                    <input type="text" id="search-input" class="search-input" placeholder="Search by Dispute ID, Payment ID, Reason Code...">
+                    <select id="network-filter" class="filter-select">
+                        <option value="all">All Networks</option>
+                        <option value="visa">Visa (CE 3.0)</option>
+                        <option value="mastercard">Mastercard (FPT)</option>
+                    </select>
+                    <select id="decision-filter" class="filter-select">
+                        <option value="all">All Decisions</option>
+                        <option value="AUTO_DISPATCHED">Auto-Dispatched</option>
+                        <option value="ROUTE_TO_HITL_QUEUE">HITL Review Queue</option>
+                    </select>
+                </div>
+                <button class="btn btn-secondary" onclick="fetchDisputes()">
+                    🔄 Refresh Stream
+                </button>
+            </div>
+
+            <table class="disputes-table">
+                <thead>
+                    <tr>
+                        <th>Dispute / Payment ID</th>
+                        <th>Network &amp; Reason</th>
+                        <th>Disputed Amount</th>
+                        <th>Confidence ($S_c$)</th>
+                        <th>Gatekeeper Decision</th>
+                        <th>SHA-256 Seal</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="disputes-tbody">
+                    <!-- Dynamic Rows -->
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Cryptographic Audit Ledger Explorer -->
+        <section class="card-panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <span>⛓️ Cryptographic SHA-256 Audit Chain Ledger</span>
+                </div>
+                <button class="btn btn-secondary" onclick="verifyLedgerOnDemand()">
+                    🔍 Verify Full Chain Integrity
+                </button>
+            </div>
+            <div class="ledger-timeline" id="ledger-blocks-container">
+                <!-- Dynamic Blocks -->
+            </div>
+        </section>
+    </div>
+
+    <!-- Evidence Dossier Modal -->
+    <div class="modal-overlay" id="dossier-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 style="font-size: 16px; font-weight: 700; color: #ffffff;">📋 Evidence Dossier Deep-Dive</h3>
+                <button class="modal-close" onclick="closeDossierModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modal-dossier-body">
+                <!-- Dynamic Content Loaded by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom JS -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

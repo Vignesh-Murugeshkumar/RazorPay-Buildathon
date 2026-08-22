@@ -1,0 +1,24 @@
+{
+  "name": "sentinel-dispute",
+  "version": "1.0.0",
+  "description": "Autonomous Visa CE 3.0 & Mastercard FPT Dispute Defense Engine for Razorpay",
+  "main": "api/index.py",
+  "scripts": {
+    "dev": "uvicorn app.main:app --reload --port 3000",
+    "start": "uvicorn app.main:app --port 3000",
+    "test": "pytest tests/",
+    "benchmark": "python tests/run_benchmark.py"
+  },
+  "keywords": [
+    "razorpay",
+    "chargeback",
+    "visa-ce30",
+    "mastercard-fpt",
+    "langgraph",
+    "fastapi",
+    "dispute-defense",
+    "audit-ledger"
+  ],
+  "author": "SentinelDispute Engineering",
+  "license": "MIT"
+}
