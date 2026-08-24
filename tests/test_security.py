@@ -1,10 +1,13 @@
+import time
 import json
 import pytest
 from app.security import (
     verify_razorpay_webhook,
+    validate_webhook_timestamp,
     generate_razorpay_signature,
     compute_sha256_hash
 )
+from app.core.db import db
 
 
 def test_valid_signature_verification():
@@ -39,9 +42,30 @@ def test_empty_signature_or_secret():
     assert verify_razorpay_webhook(payload, "", "secret") is False
 
 
+def test_webhook_timestamp_tolerance():
+    now = time.time()
+    # Fresh timestamp (10 seconds ago) -> True
+    assert validate_webhook_timestamp(now - 10, tolerance_seconds=300) is True
+    # Stale timestamp (10 minutes ago) -> False
+    assert validate_webhook_timestamp(now - 600, tolerance_seconds=300) is False
+    # Future timestamp within tolerance -> True
+    assert validate_webhook_timestamp(now + 10, tolerance_seconds=300) is True
+    # Invalid timestamp format -> False
+    assert validate_webhook_timestamp("invalid_ts") is False
+
+
+def test_webhook_replay_guard_nonce():
+    event_id = f"evt_test_replay_{int(time.time()*1000)}"
+    # First submission: fresh -> True
+    assert db.record_and_verify_event(event_id, "sig_123") is True
+    # Second submission with same event_id: replay -> False
+    assert db.record_and_verify_event(event_id, "sig_123") is False
+
+
 def test_compute_sha256_hash():
     data = "test_string_for_hashing"
     h1 = compute_sha256_hash(data)
     h2 = compute_sha256_hash(data.encode('utf-8'))
     assert len(h1) == 64
     assert h1 == h2
+

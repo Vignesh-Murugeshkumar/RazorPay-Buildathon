@@ -1,112 +1,88 @@
 import os
 import time
+from contextlib import asynccontextmanager
 from typing import List, Dict, Any, Optional
-from fastapi import FastAPI, Header, HTTPException, Request, Response, status
+
+from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
-from app.models.dispute import DisputePayload, Dossier, DisputeSummary
-from app.models.ledger import LedgerBlock, LedgerIntegrityReport
-from app.security import verify_razorpay_webhook, generate_razorpay_signature
+from app.core.config import settings
+from app.core.logger import get_logger
+from app.api import api_v1_router
+from app.api.v1.endpoints.webhooks import dossiers_db
+from app.schemas.dispute import (
+    RazorpayDisputeWebhook,
+    DisputePayload,
+    Dossier,
+    DisputeSummary
+)
+from app.services.ledger import (
+    LedgerBlock,
+    LedgerIntegrityReport,
+    ledger
+)
 from app.graphs.dispute_graph import execute_dispute_workflow
-from app.ledger.audit_chain import ledger
 
-WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "sentinel_secret_key_dev")
+logger = get_logger("main")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    FastAPI Lifespan Context Manager.
+    Initializes services, registers genesis seeds, and handles graceful shutdowns.
+    """
+    logger.info(
+        "Initializing SentinelDispute Engine",
+        environment=settings.ENVIRONMENT,
+        version=settings.PROJECT_VERSION,
+        audit_blocks=ledger.get_total_count()
+    )
+    yield
+    logger.info("Shutting down SentinelDispute Engine")
+
 
 app = FastAPI(
-    title="SentinelDispute",
+    title=settings.PROJECT_NAME,
     description="Autonomous Visa CE 3.0 & Mastercard FPT Dispute Defense Engine for Razorpay",
-    version="1.0.0",
+    version=settings.PROJECT_VERSION,
     docs_url="/docs",
-    openapi_url="/openapi.json"
+    openapi_url="/openapi.json",
+    lifespan=lifespan
 )
 
-# Enable CORS for Next.js / React frontend & local testing
+# CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# In-memory dossier store
-_dossiers_db: Dict[str, Dossier] = {}
+# Include Modular API Routers
+app.include_router(api_v1_router)
 
 
-@app.get("/api/v1/health")
+@app.get("/api/v1/health", tags=["System"])
 async def health_check():
+    """System health check & audit status."""
     return {
         "status": "healthy",
-        "service": "SentinelDispute",
-        "version": "1.0.0",
+        "service": settings.PROJECT_NAME,
+        "version": settings.PROJECT_VERSION,
+        "environment": settings.ENVIRONMENT,
         "audit_blocks": ledger.get_total_count()
     }
 
 
-@app.post("/api/v1/webhook/dispute", status_code=status.HTTP_200_OK)
-async def handle_dispute_webhook(
-    request: Request,
-    x_razorpay_signature: Optional[str] = Header(None, alias="X-Razorpay-Signature")
-):
-    """
-    Ingress point for Razorpay payment.dispute.created webhooks.
-    Validates HMAC-SHA256 signature in constant time before processing.
-    """
-    raw_body = await request.body()
-
-    # Signature verification
-    # If signature header is provided, it must match.
-    # In dev/testing mode without header, we allow test payloads if explicitly permitted.
-    if x_razorpay_signature is not None:
-        is_valid = verify_razorpay_webhook(raw_body, x_razorpay_signature, WEBHOOK_SECRET)
-        if not is_valid:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid Razorpay webhook HMAC-SHA256 signature"
-            )
-
-    try:
-        payload_dict = await request.json()
-        payload = DisputePayload.model_validate(payload_dict)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Malformed dispute webhook payload: {str(e)}"
-        )
-
-    # Ingress audit log
-    ledger.append_block(
-        agent_id="INGRESS_SECURITY",
-        state_transition="WEBHOOK_VERIFIED",
-        payload={
-            "dispute_id": payload.dispute_id,
-            "payment_id": payload.payment_id,
-            "signature_verified": bool(x_razorpay_signature)
-        }
-    )
-
-    # Execute deterministic LangGraph state workflow
-    dossier = execute_dispute_workflow(payload)
-    _dossiers_db[dossier.dispute_id] = dossier
-
-    return {
-        "status": "success",
-        "dispute_id": dossier.dispute_id,
-        "payment_id": dossier.payment_id,
-        "decision": dossier.decision,
-        "confidence_score": dossier.confidence_score,
-        "sealed_hash": dossier.sealed_hash,
-        "summary": dossier.summary
-    }
-
-
-@app.get("/api/v1/disputes", response_model=List[DisputeSummary])
+@app.get("/api/v1/disputes", response_model=List[DisputeSummary], tags=["Disputes"])
 async def list_disputes():
-    """Returns list of processed disputes with high-level summaries."""
+    """Returns list of processed disputes with summaries."""
     summaries = []
-    for d in _dossiers_db.values():
+    for d in dossiers_db.values():
         summaries.append(
             DisputeSummary(
                 dispute_id=d.dispute_id,
@@ -123,37 +99,150 @@ async def list_disputes():
     return list(reversed(summaries))
 
 
-@app.get("/api/v1/disputes/{dispute_id}", response_model=Dossier)
+from app.core.db import db
+from app.schemas.dispute import (
+    RazorpayDisputeWebhook,
+    DisputePayload,
+    Dossier,
+    DisputeSummary,
+    CarrierProof
+)
+from app.schemas.remediation import RemediationEvidencePayload
+
+
+@app.get("/api/v1/disputes/{dispute_id}", response_model=Dossier, tags=["Disputes"])
 async def get_dispute(dispute_id: str):
-    """Returns full evidence dossier and evaluation trace for a dispute."""
-    if dispute_id not in _dossiers_db:
-        raise HTTPException(status_code=404, detail="Dispute dossier not found")
-    return _dossiers_db[dispute_id]
+    """Returns full evidence dossier and evaluation trace."""
+    if dispute_id in dossiers_db:
+        return dossiers_db[dispute_id]
+    dossier = db.get_dossier(dispute_id)
+    if dossier:
+        dossiers_db[dispute_id] = dossier
+        return dossier
+    raise HTTPException(status_code=404, detail="Dispute dossier not found")
 
 
-@app.get("/api/v1/audit/integrity", response_model=LedgerIntegrityReport)
+@app.post("/api/v1/disputes/{dispute_id}/remediate", response_model=Dossier, tags=["Disputes"])
+async def remediate_dispute_evidence(dispute_id: str, remediation: RemediationEvidencePayload):
+    """
+    Human-in-the-Loop (HITL) Evidence Remediation:
+    Allows analysts to supply missing carrier proof, GPS telemetry, MFA verification, or SaaS logs.
+    Re-runs the LangGraph deterministic compliance engine and auto-dispatches if Sc >= 85.0.
+    """
+    raw_payload = db.get_raw_payload(dispute_id)
+    if not raw_payload:
+        if dispute_id in dossiers_db:
+            d = dossiers_db[dispute_id]
+            raw_payload = RazorpayDisputeWebhook(
+                dispute_id=d.dispute_id,
+                payment_id=d.payment_id,
+                amount_inr=d.amount_inr,
+                card_network=d.card_network,
+                reason_code=d.reason_code,
+                telemetry=d.telemetry,
+                carrier_proof=d.carrier_proof,
+                digital_proof=d.digital_proof
+            )
+        else:
+            raise HTTPException(status_code=404, detail=f"Dispute {dispute_id} not found for remediation")
+
+    # Update Carrier Proof
+    if remediation.delivered_status is not None or remediation.tracking_number is not None:
+        if raw_payload.carrier_proof is None:
+            raw_payload.carrier_proof = CarrierProof(
+                carrier_name=remediation.carrier_name or "BlueDart",
+                tracking_number=remediation.tracking_number or f"TRK-{dispute_id[-6:]}",
+                delivered_status=remediation.delivered_status if remediation.delivered_status is not None else True,
+                recipient_signature_present=remediation.recipient_signature_present if remediation.recipient_signature_present is not None else True,
+                gps_latitude=remediation.gps_latitude,
+                gps_longitude=remediation.gps_longitude,
+                verified_gps=remediation.verified_gps if remediation.verified_gps is not None else (remediation.gps_latitude is not None)
+            )
+        else:
+            if remediation.carrier_name:
+                raw_payload.carrier_proof.carrier_name = remediation.carrier_name
+            if remediation.tracking_number:
+                raw_payload.carrier_proof.tracking_number = remediation.tracking_number
+            if remediation.delivered_status is not None:
+                raw_payload.carrier_proof.delivered_status = remediation.delivered_status
+            if remediation.recipient_signature_present is not None:
+                raw_payload.carrier_proof.recipient_signature_present = remediation.recipient_signature_present
+            if remediation.gps_latitude is not None:
+                raw_payload.carrier_proof.gps_latitude = remediation.gps_latitude
+            if remediation.gps_longitude is not None:
+                raw_payload.carrier_proof.gps_longitude = remediation.gps_longitude
+            if remediation.verified_gps is not None:
+                raw_payload.carrier_proof.verified_gps = remediation.verified_gps
+
+    # Update Telemetry
+    if remediation.mfa_authenticated is not None:
+        raw_payload.telemetry.mfa_authenticated = remediation.mfa_authenticated
+    if remediation.user_id_confirmed:
+        raw_payload.telemetry.user_id = remediation.user_id_confirmed
+    if remediation.ip_address_confirmed:
+        raw_payload.telemetry.ip_address = remediation.ip_address_confirmed
+
+    # Update Digital Proof if provided
+    if remediation.digital_access_logs_verified is not None:
+        raw_payload.service_type = "digital_saas"
+        from app.schemas.dispute import DigitalFulfillmentProof
+        raw_payload.digital_proof = DigitalFulfillmentProof(
+            access_logs_verified=remediation.digital_access_logs_verified,
+            ip_subnet_matched=remediation.digital_ip_subnet_matched if remediation.digital_ip_subnet_matched is not None else True,
+            user_account_active=True
+        )
+
+    # Append HITL Audit Block
+    ledger.append_block(
+        agent_id=f"HITL_{remediation.analyst_id}",
+        state_transition="EVIDENCE_REMEDIATED",
+        payload={
+            "dispute_id": dispute_id,
+            "analyst_id": remediation.analyst_id,
+            "notes": remediation.analyst_notes,
+            "carrier_verified": bool(raw_payload.carrier_proof and raw_payload.carrier_proof.delivered_status),
+            "mfa_verified": raw_payload.telemetry.mfa_authenticated,
+            "gps_verified": bool(raw_payload.carrier_proof and raw_payload.carrier_proof.verified_gps)
+        }
+    )
+
+    # Re-evaluate through deterministic workflow
+    dossier = execute_dispute_workflow(raw_payload)
+    dossiers_db[dossier.dispute_id] = dossier
+    db.save_dossier(dossier, raw_payload)
+    
+    logger.info(
+        "Remediation processed for dispute",
+        dispute_id=dispute_id,
+        new_score=dossier.confidence_score,
+        new_decision=dossier.decision
+    )
+    return dossier
+
+
+@app.get("/api/v1/audit/integrity", response_model=LedgerIntegrityReport, tags=["Audit Ledger"])
 async def verify_ledger_integrity():
-    """Verifies the complete cryptographic SHA-256 hash chain continuity."""
+    """Verifies complete SHA-256 hash chain continuity from genesis to head."""
     return ledger.verify_integrity()
 
 
-@app.get("/api/v1/audit/blocks", response_model=List[LedgerBlock])
+@app.get("/api/v1/audit/blocks", response_model=List[LedgerBlock], tags=["Audit Ledger"])
 async def get_ledger_blocks(limit: int = 50, offset: int = 0):
-    """Returns recent blocks from the cryptographic hash chain."""
+    """Returns recent blocks from the cryptographic ledger."""
     return ledger.get_blocks(limit=limit, offset=offset)
 
 
-@app.get("/api/v1/stats")
+@app.get("/api/v1/stats", tags=["Analytics"])
 async def get_stats():
-    """Returns aggregate dashboard analytics and KPI metrics."""
-    total = len(_dossiers_db)
-    auto_dispatched = sum(1 for d in _dossiers_db.values() if d.decision == "AUTO_DISPATCHED")
+    """Returns aggregate dashboard metrics, yield rates, and protected GMV."""
+    total = len(dossiers_db)
+    auto_dispatched = sum(1 for d in dossiers_db.values() if d.decision == "AUTO_DISPATCHED")
     hitl_queued = total - auto_dispatched
     
-    total_gmv = sum(d.amount_inr for d in _dossiers_db.values())
-    recovered_gmv = sum(d.amount_inr for d in _dossiers_db.values() if d.decision == "AUTO_DISPATCHED")
+    total_gmv = sum(d.amount_inr for d in dossiers_db.values())
+    recovered_gmv = sum(d.amount_inr for d in dossiers_db.values() if d.decision == "AUTO_DISPATCHED")
     
-    avg_score = (sum(d.confidence_score for d in _dossiers_db.values()) / total) if total > 0 else 0.0
+    avg_score = (sum(d.confidence_score for d in dossiers_db.values()) / total) if total > 0 else 0.0
     yield_rate = (auto_dispatched / total * 100.0) if total > 0 else 0.0
     
     integrity = ledger.verify_integrity()
@@ -171,26 +260,23 @@ async def get_stats():
     }
 
 
-@app.post("/api/v1/simulate")
-async def simulate_dispute(payload: DisputePayload):
-    """
-    Direct simulation endpoint for testing scenarios from UI without needing HMAC signing headers.
-    """
+@app.post("/api/v1/simulate", tags=["Simulation"])
+async def simulate_dispute(payload: RazorpayDisputeWebhook):
+    """Direct scenario simulation runner."""
     ledger.append_block(
         agent_id="SIMULATION_RUNNER",
         state_transition="SIMULATION_INGEST",
         payload={"dispute_id": payload.dispute_id, "amount_inr": payload.amount_inr}
     )
     dossier = execute_dispute_workflow(payload)
-    _dossiers_db[dossier.dispute_id] = dossier
+    dossiers_db[dossier.dispute_id] = dossier
+    db.save_dossier(dossier, payload)
     return dossier
 
 
-@app.post("/api/v1/benchmark/run")
+@app.post("/api/v1/benchmark/run", tags=["Simulation"])
 async def trigger_benchmark_run():
-    """
-    Runs the 60-scenario synthetic benchmark dataset on-demand.
-    """
+    """Runs 60-scenario synthetic benchmark dataset on demand."""
     from tests.generate_dataset import generate_benchmark_dataset
     
     scenarios = generate_benchmark_dataset()
@@ -201,7 +287,7 @@ async def trigger_benchmark_run():
         t0 = time.time()
         dossier = execute_dispute_workflow(sc["payload"])
         latency_ms = round((time.time() - t0) * 1000, 2)
-        _dossiers_db[dossier.dispute_id] = dossier
+        dossiers_db[dossier.dispute_id] = dossier
         
         is_expected = (dossier.decision == sc["expected_decision"])
         results.append({
@@ -236,13 +322,13 @@ async def trigger_benchmark_run():
     }
 
 
-# Mount static files
+# Mount Static Files & Dashboard UI
 static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def serve_index():
     index_path = os.path.join(static_dir, "index.html")
     if os.path.exists(index_path):

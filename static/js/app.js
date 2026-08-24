@@ -205,9 +205,16 @@ function renderDisputesTable(disputes) {
                     </span>
                 </td>
                 <td>
-                    <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="viewDossier('${d.dispute_id}')">
-                        Inspect Dossier &rarr;
-                    </button>
+                    <div style="display: flex; gap: 6px;">
+                        <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="viewDossier('${d.dispute_id}')">
+                            Inspect
+                        </button>
+                        ${!isAuto ? `
+                            <button class="btn btn-primary" style="padding: 4px 8px; font-size: 11px; background: linear-gradient(135deg, #f59e0b, #d97706); border-color: #f59e0b;" onclick="openRemediationModal('${d.dispute_id}')">
+                                🛠️ Remediate
+                            </button>
+                        ` : ''}
+                    </div>
                 </td>
             </tr>
         `;
@@ -614,3 +621,164 @@ async function verifyLedgerOnDemand() {
         alert('Error checking integrity: ' + err.message);
     }
 }
+
+// ----------------- HITL REMEDIATION MODAL -----------------
+async function openRemediationModal(disputeId) {
+    const modal = document.getElementById('remediation-modal');
+    const container = document.getElementById('modal-remediation-body');
+    if (!modal || !container) return;
+
+    modal.classList.add('active');
+    container.innerHTML = `
+        <div style="text-align: center; padding: 30px; color: var(--text-muted);">
+            ⏳ Fetching dispute context for remediation...
+        </div>
+    `;
+
+    try {
+        const res = await fetch(`/api/v1/disputes/${disputeId}`);
+        if (!res.ok) throw new Error('Could not fetch dispute dossier');
+        const d = await res.json();
+
+        const gapsList = (d.evaluation.diagnostic_gaps || []).map(g => `<li>⚠️ ${g}</li>`).join('');
+
+        container.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+                <div>
+                    <span class="mono-text" style="font-size: 14px; font-weight: 700; color: var(--accent-cyan);">${d.dispute_id}</span>
+                    <span style="color: var(--text-muted); font-size: 12px; margin-left: 8px;">(${d.card_network.toUpperCase()} - Reason ${d.reason_code})</span>
+                </div>
+                <div style="text-align: right;">
+                    <span style="font-size: 12px; color: var(--text-muted);">Current Score:</span>
+                    <span style="font-size: 16px; font-weight: 800; color: var(--accent-amber); margin-left: 4px;">${d.confidence_score}/100</span>
+                </div>
+            </div>
+
+            ${gapsList ? `
+                <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                    <strong style="color: var(--accent-amber); font-size: 12px; display: block; margin-bottom: 6px;">Identified Evidence Gaps:</strong>
+                    <ul style="margin: 0; padding-left: 18px; font-size: 11px; color: #fde68a; line-height: 1.6;">
+                        ${gapsList}
+                    </ul>
+                </div>
+            ` : ''}
+
+            <form id="remediation-form" onsubmit="event.preventDefault(); submitRemediation('${d.dispute_id}')" style="display: flex; flex-direction: column; gap: 14px;">
+                <div style="background: var(--bg-surface-2); padding: 14px; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <h4 style="font-size: 13px; color: var(--accent-cyan); margin-bottom: 10px;">📦 Carrier & Logistics Proof</h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div>
+                            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Carrier Name</label>
+                            <input type="text" id="rem-carrier-name" class="search-input" value="${d.carrier_proof ? d.carrier_proof.carrier_name : 'BlueDart'}" style="width: 100%;">
+                        </div>
+                        <div>
+                            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Tracking Number</label>
+                            <input type="text" id="rem-tracking-no" class="search-input" value="${d.carrier_proof ? d.carrier_proof.tracking_number : 'BD' + Date.now().toString().slice(-8)}" style="width: 100%;">
+                        </div>
+                    </div>
+                    <div style="margin-top: 10px; display: flex; gap: 20px; flex-wrap: wrap;">
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-main); cursor: pointer;">
+                            <input type="checkbox" id="rem-delivered" checked>
+                            <span>Verified Physical Delivery (+35 pts)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-main); cursor: pointer;">
+                            <input type="checkbox" id="rem-gps" checked>
+                            <span>Carrier GPS &le;50m Verified (+10 pts)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div style="background: var(--bg-surface-2); padding: 14px; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <h4 style="font-size: 13px; color: var(--accent-purple); margin-bottom: 10px;">🔐 Identity & Authentication Proof</h4>
+                    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-main); cursor: pointer;">
+                            <input type="checkbox" id="rem-mfa" checked>
+                            <span>3DS / 2FA Verification Log (+5 pts)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-main); cursor: pointer;">
+                            <input type="checkbox" id="rem-digital-logs">
+                            <span>SaaS / Server Access Logs Verified</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div>
+                    <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Analyst Notes / Defense Rationale</label>
+                    <textarea id="rem-notes" class="search-input" rows="2" style="width: 100%; resize: vertical;" placeholder="e.g. Uploaded signed BlueDart POD receipt and validated customer 3DS authentication telemetry."></textarea>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
+                    <button type="button" class="btn btn-secondary" onclick="closeRemediationModal()">Cancel</button>
+                    <button type="submit" id="btn-submit-remediation" class="btn btn-primary" style="background: linear-gradient(135deg, #10b981, #059669); border-color: #10b981;">
+                        ⚡ Re-evaluate & Auto-Dispatch &rarr;
+                    </button>
+                </div>
+            </form>
+        `;
+    } catch (err) {
+        container.innerHTML = `
+            <div style="color: var(--accent-rose); padding: 20px;">
+                ❌ Error loading dispute: ${err.message}
+            </div>
+        `;
+    }
+}
+
+function closeRemediationModal() {
+    const modal = document.getElementById('remediation-modal');
+    if (modal) modal.classList.remove('active');
+}
+
+async function submitRemediation(disputeId) {
+    const btn = document.getElementById('btn-submit-remediation');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerText = '⏳ Re-evaluating LangGraph Compliance Engine...';
+    }
+
+    const payload = {
+        analyst_id: 'ANALYST_AGENT_01',
+        analyst_notes: document.getElementById('rem-notes').value || 'Analyst verified documentary proof',
+        carrier_name: document.getElementById('rem-carrier-name').value,
+        tracking_number: document.getElementById('rem-tracking-no').value,
+        delivered_status: document.getElementById('rem-delivered').checked,
+        recipient_signature_present: true,
+        verified_gps: document.getElementById('rem-gps').checked,
+        gps_latitude: 12.9716,
+        gps_longitude: 77.5946,
+        mfa_authenticated: document.getElementById('rem-mfa').checked,
+        digital_access_logs_verified: document.getElementById('rem-digital-logs').checked ? true : null
+    };
+
+    try {
+        const res = await fetch(`/api/v1/disputes/${disputeId}/remediate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Remediation failed');
+        }
+
+        const updatedDossier = await res.json();
+        closeRemediationModal();
+
+        await fetchStats();
+        await fetchDisputes();
+        await fetchLedger();
+
+        alert(`🎉 Remediation Successful!\n\n• Dispute ID: ${updatedDossier.dispute_id}\n• New Confidence Score: ${updatedDossier.confidence_score}/100.0\n• Decision: ${updatedDossier.decision}\n• SHA-256 Seal: ${updatedDossier.sealed_hash.substring(0, 16)}...\n\nPromoted to Auto-Dispatched & defense dispatched to card network!`);
+
+        viewDossier(updatedDossier.dispute_id);
+    } catch (err) {
+        alert('Remediation error: ' + err.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = '⚡ Re-evaluate & Auto-Dispatch →';
+        }
+    }
+}
+

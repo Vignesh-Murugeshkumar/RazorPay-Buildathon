@@ -1,7 +1,6 @@
 from app.schemas.dispute import (
     CustomerTelemetry,
     CarrierProof,
-    DigitalFulfillmentProof,
     HistoricalTransaction,
     RazorpayDisputeWebhook,
     DisputePayload,
@@ -13,7 +12,6 @@ from app.schemas.dispute import (
 __all__ = [
     "CustomerTelemetry",
     "CarrierProof",
-    "DigitalFulfillmentProof",
     "HistoricalTransaction",
     "RazorpayDisputeWebhook",
     "DisputePayload",

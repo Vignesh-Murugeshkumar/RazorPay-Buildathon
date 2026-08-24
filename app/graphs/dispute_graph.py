@@ -183,6 +183,7 @@ def auto_dispatch_agent_node(state: DisputeState) -> DisputeState:
         timestamp=timestamp,
         telemetry=payload.telemetry,
         carrier_proof=payload.carrier_proof,
+        digital_proof=payload.digital_proof,
         historical_count=len(payload.historical_transactions),
         summary=summary
     )
@@ -241,6 +242,7 @@ def hitl_queue_agent_node(state: DisputeState) -> DisputeState:
         timestamp=timestamp,
         telemetry=payload.telemetry,
         carrier_proof=payload.carrier_proof,
+        digital_proof=payload.digital_proof,
         historical_count=len(payload.historical_transactions),
         summary=summary
     )
