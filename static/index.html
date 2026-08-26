@@ -50,19 +50,25 @@
             </div>
             <div class="sim-buttons">
                 <button class="btn btn-primary" onclick="runSimulation('visa_ce30')">
-                    ➕ Visa 10.4 (CE 3.0 Compliant)
+                    ➕ Visa 10.4 (CE 3.0)
                 </button>
                 <button class="btn btn-secondary" onclick="runSimulation('mc_fpt')">
-                    ➕ Mastercard 4837 (FPT Compliant)
+                    ➕ MC 4837 (FPT)
                 </button>
-                <button class="btn btn-secondary" onclick="runSimulation('hitl_lookback')">
-                    ⚠️ Borderline Lookback &lt;120d (HITL)
+                <button class="btn btn-secondary" onclick="runSimulation('service_13_1_rag')">
+                    📄 Visa 13.1 (Non-Fraud RAG)
                 </button>
-                <button class="btn btn-secondary" onclick="runSimulation('fraud')">
-                    🚫 First-Time Buyer Fraud (HITL)
+                <button class="btn btn-secondary" onclick="runSimulation('negative_ev_refund')">
+                    🛑 Negative E[V] (Auto-Refund)
+                </button>
+                <button class="btn btn-secondary" onclick="runSimulation('pre_dispute_deflect')">
+                    🛡️ Verifi Deflection (&le;2s)
+                </button>
+                <button class="btn btn-secondary" onclick="runSimulation('razorpay_udir')">
+                    🇮🇳 NPCI UDIR (UPI/RuPay)
                 </button>
                 <button id="btn-benchmark" class="btn btn-emerald" onclick="runFullBenchmark()">
-                    ⚡ Run 60-Scenario Benchmark
+                    ⚡ 60-Scenario Benchmark
                 </button>
             </div>
         </section>

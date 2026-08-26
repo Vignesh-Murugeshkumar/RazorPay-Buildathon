@@ -109,9 +109,18 @@ class RuleEvaluationResult(BaseModel):
     gps_verified: bool = False
     mfa_verified: bool = False
     confidence_score: float = 0.0
-    route_decision: str = "ROUTE_TO_HITL_QUEUE"  # "AUTO_DISPATCH" or "ROUTE_TO_HITL_QUEUE"
+    route_decision: str = "ROUTE_TO_HITL_QUEUE"  # "AUTO_DISPATCH", "ROUTE_TO_HITL_QUEUE", or "AUTO_ACCEPT_OR_REFUND"
     diagnostic_gaps: List[str] = Field(default_factory=list)
     score_breakdown: Dict[str, float] = Field(default_factory=dict)
+    # Economic Expected Value Engine Fields
+    p_win: float = 0.0
+    expected_value_inr: float = 0.0
+    issuer_fee_inr: float = 1500.0
+    operational_cost_inr: float = 40.0
+    economic_decision: str = "ROUTE_TO_HITL_QUEUE"
+    # Multimodal RAG Non-Fraud Fields
+    rebuttal_letter: Optional[Dict[str, Any]] = None
+    evidence_category: str = "FRAUD_CE30_FPT"  # "FRAUD_CE30_FPT" | "SERVICE_DISPUTE_RAG" | "CANCELLATION_RAG"
 
 
 class Dossier(BaseModel):
@@ -130,6 +139,9 @@ class Dossier(BaseModel):
     digital_proof: Optional[DigitalFulfillmentProof] = None
     historical_count: int = 0
     summary: str
+    expected_value_inr: Optional[float] = None
+    p_win: Optional[float] = None
+    rebuttal_letter: Optional[Dict[str, Any]] = None
 
 
 class DisputeSummary(BaseModel):
@@ -142,3 +154,5 @@ class DisputeSummary(BaseModel):
     decision: str
     timestamp: str
     sealed_hash: str
+    expected_value_inr: Optional[float] = None
+    p_win: Optional[float] = None

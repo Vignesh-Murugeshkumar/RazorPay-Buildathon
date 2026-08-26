@@ -379,6 +379,46 @@ async function viewDossier(disputeId) {
                 </div>
             ` : ''}
 
+            <!-- Economic Optimization E[V] Card -->
+            ${dossier.expected_value_inr !== undefined && dossier.expected_value_inr !== null ? `
+                <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: var(--radius-md); padding: 16px;">
+                    <h4 style="font-size: 13px; font-weight: 600; color: #38bdf8; margin-bottom: 8px;">💰 Net Recovery Expected Value (E[V]):</h4>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; font-size: 12px;">
+                        <div>
+                            <span style="color: var(--text-muted); display: block;">Calculated E[V]</span>
+                            <strong style="color: ${dossier.expected_value_inr > 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'}; font-size: 14px;">
+                                ${dossier.expected_value_inr > 0 ? '+' : ''}₹${dossier.expected_value_inr.toLocaleString()}
+                            </strong>
+                        </div>
+                        <div>
+                            <span style="color: var(--text-muted); display: block;">Win Probability P(win)</span>
+                            <strong style="color: var(--accent-cyan); font-size: 14px;">
+                                ${dossier.p_win ? (dossier.p_win * 100).toFixed(1) + '%' : 'N/A'}
+                            </strong>
+                        </div>
+                        <div>
+                            <span style="color: var(--text-muted); display: block;">Dispute Fee At Risk</span>
+                            <strong style="color: var(--accent-rose); font-size: 14px;">
+                                ₹1,500.00
+                            </strong>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+
+            <!-- Constrained Rebuttal Letter Synthesizer Section -->
+            ${dossier.rebuttal_letter ? `
+                <div style="background: var(--surface-2); border-radius: var(--radius-md); padding: 16px; border: 1px solid var(--border-color);">
+                    <h4 style="font-size: 13px; font-weight: 600; color: #a78bfa; margin-bottom: 8px;">📄 Constrained Rebuttal Letter (Zero-Filler Network Synthesizer):</h4>
+                    <div style="font-size: 12px; line-height: 1.5; color: var(--text-main); background: rgba(0,0,0,0.25); padding: 12px; border-radius: 6px; font-family: var(--font-mono);">
+                        <p style="margin-bottom: 6px;"><strong>TO:</strong> ${dossier.card_network.toUpperCase()} Representment Review Board (${dossier.rebuttal_letter.reason_description || dossier.reason_code})</p>
+                        <p style="margin-bottom: 6px;"><strong>DISPUTE REF:</strong> ${dossier.dispute_id} | <strong>TRACKING:</strong> ${dossier.rebuttal_letter.tracking_number || 'N/A'}</p>
+                        <p style="margin-bottom: 8px;"><strong>FULFILLMENT STATUS:</strong> <span style="color: #34d399;">${dossier.rebuttal_letter.delivery_status || 'DELIVERED'}</span></p>
+                        <p style="color: #cbd5e1;"><em>"${dossier.rebuttal_letter.rebuttal_statement}"</em></p>
+                    </div>
+                </div>
+            ` : ''}
+
             <!-- Cryptographic Seal Info -->
             <div style="border-top: 1px solid var(--border-color); padding-top: 16px; font-size: 11px; font-family: var(--font-mono); color: var(--text-muted);">
                 <div><strong>CRYPTOGRAPHIC SEAL:</strong> <span style="color: var(--accent-cyan);">${dossier.sealed_hash}</span></div>
@@ -539,6 +579,154 @@ async function runSimulation(type) {
                 }
             ]
         };
+    } else if (type === 'service_13_1_rag') {
+        payload = {
+            event: "payment.dispute.created",
+            dispute_id: `disp_sim_rag_${now % 10000}`,
+            payment_id: `pay_rag_${now % 10000}`,
+            amount_inr: 8500.0,
+            card_network: "visa",
+            reason_code: "13.1",
+            telemetry: {
+                ip_address: "106.51.78.22",
+                device_id: "dev_iphone15_pro_uuid",
+                user_id: "user_ananya_sharma",
+                shipping_address: "B-204, Prestige Ozone, Whitefield, Bangalore",
+                mfa_authenticated: true
+            },
+            carrier_proof: {
+                carrier_name: "BlueDart Express",
+                tracking_number: `BD99881122`,
+                delivered_status: true,
+                recipient_signature_present: true,
+                verified_gps: true,
+                gps_latitude: 12.9698,
+                gps_longitude: 77.7499
+            },
+            historical_transactions: []
+        };
+    } else if (type === 'negative_ev_refund') {
+        // Low amount (₹400), low probability, unviable E[V] <= 0
+        payload = {
+            event: "payment.dispute.created",
+            dispute_id: `disp_sim_low_ev_${now % 10000}`,
+            payment_id: `pay_low_ev_${now % 10000}`,
+            amount_inr: 450.0,
+            card_network: "visa",
+            reason_code: "10.4",
+            telemetry: {
+                ip_address: "14.139.128.1",
+                device_id: "unverified_dev_fp",
+                user_id: "guest_buyer",
+                shipping_address: "General Delivery",
+                mfa_authenticated: false
+            },
+            carrier_proof: null,
+            historical_transactions: []
+        };
+    } else if (type === 'razorpay_udir') {
+        // Domestic NPCI UDIR UPI / RuPay dispute
+        payload = {
+            event: "payment.dispute.created",
+            dispute_id: `disp_sim_udir_${now % 10000}`,
+            payment_id: `pay_upi_${now % 10000}`,
+            amount_inr: 3500.0,
+            card_network: "rupay",
+            reason_code: "10.4",
+            service_type: "physical",
+            telemetry: {
+                ip_address: "49.207.180.45",
+                device_id: "dev_fingerprint_macbook_pro_uuid",
+                user_id: "user_rahul_sharma",
+                shipping_address: "Flat 402, Embassy Palms, Indiranagar, Bangalore",
+                mfa_authenticated: true
+            },
+            carrier_proof: {
+                carrier_name: "Delhivery",
+                tracking_number: `DL${now % 100000}`,
+                delivered_status: true,
+                verified_gps: true
+            },
+            historical_transactions: [
+                {
+                    transaction_id: "tx_u1",
+                    payment_id: "pay_u1",
+                    amount_inr: 3200.0,
+                    days_ago: 150,
+                    card_last4: "1234",
+                    card_network: "rupay",
+                    ip_address: "49.207.180.45",
+                    device_id: "dev_fingerprint_macbook_pro_uuid",
+                    user_id: "user_rahul_sharma",
+                    shipping_address: "Flat 402, Embassy Palms, Indiranagar, Bangalore",
+                    undisputed: true
+                },
+                {
+                    transaction_id: "tx_u2",
+                    payment_id: "pay_u2",
+                    amount_inr: 3800.0,
+                    days_ago: 240,
+                    card_last4: "1234",
+                    card_network: "rupay",
+                    ip_address: "49.207.180.45",
+                    device_id: "dev_fingerprint_macbook_pro_uuid",
+                    user_id: "user_rahul_sharma",
+                    shipping_address: "Flat 402, Embassy Palms, Indiranagar, Bangalore",
+                    undisputed: true
+                }
+            ]
+        };
+    } else if (type === 'pre_dispute_deflect') {
+        // First ingest 2 qualifying telemetry orders in hot cache
+        const cardFp = "card_fp_test_verifi_deflect_99";
+        try {
+            await fetch('/api/v1/pre-dispute/telemetry/ingest', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    card_fingerprint: cardFp,
+                    customer_id: "user_deflect_hero",
+                    ip_address: "49.207.180.45",
+                    device_fingerprint: "dev_deflect_fp_uuid",
+                    shipping_address: "Indiranagar, Bangalore",
+                    days_ago: 160
+                })
+            });
+            await fetch('/api/v1/pre-dispute/telemetry/ingest', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    card_fingerprint: cardFp,
+                    customer_id: "user_deflect_hero",
+                    ip_address: "49.207.180.45",
+                    device_fingerprint: "dev_deflect_fp_uuid",
+                    shipping_address: "Indiranagar, Bangalore",
+                    days_ago: 280
+                })
+            });
+
+            // Now dispatch pre-dispute inquiry
+            const inqRes = await fetch('/api/v1/pre-dispute/verifi', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    order_insight_id: `oi_${now % 10000}`,
+                    card_fingerprint: cardFp,
+                    customer_id: "user_deflect_hero",
+                    ip_address: "49.207.180.45",
+                    device_fingerprint: "dev_deflect_fp_uuid",
+                    shipping_address: "Indiranagar, Bangalore"
+                })
+            });
+            const inqData = await inqRes.json();
+            await fetchStats();
+            await fetchLedger();
+            alert(`🛡️ Verifi Order Insight Pre-Dispute Interception Result:\nStatus: ${inqData.status}\nResponse Latency: ${inqData.response_time_ms} ms (SLA <= 2000ms: ${inqData.sla_guaranteed})\nEvidence: ${inqData.evidence_type}\nMessage: ${inqData.message}`);
+            return;
+        } catch (err) {
+            alert('Error running pre-dispute deflection simulation: ' + err.message);
+            return;
+        }
     } else {
         // Fraud / Unqualified
         payload = {

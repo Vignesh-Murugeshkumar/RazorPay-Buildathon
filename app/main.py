@@ -80,22 +80,31 @@ async def health_check():
 
 @app.get("/api/v1/disputes", response_model=List[DisputeSummary], tags=["Disputes"])
 async def list_disputes():
-    """Returns list of processed disputes with summaries."""
-    summaries = []
-    for d in dossiers_db.values():
-        summaries.append(
-            DisputeSummary(
-                dispute_id=d.dispute_id,
-                payment_id=d.payment_id,
-                amount_inr=d.amount_inr,
-                card_network=d.card_network,
-                reason_code=d.reason_code,
-                confidence_score=d.confidence_score,
-                decision=d.decision,
-                timestamp=d.timestamp,
-                sealed_hash=d.sealed_hash
-            )
+    """Returns list of processed disputes with summaries.
+    
+    Reads from persistent DB on every call to ensure consistency across
+    serverless instances and after cold starts (fixes stale in-memory cache issue).
+    """
+    from app.core.db import db as _db
+    all_dossiers = _db.get_all_dossiers()
+    # Keep in-memory cache warm for other endpoints that still use it
+    dossiers_db.update(all_dossiers)
+    summaries = [
+        DisputeSummary(
+            dispute_id=d.dispute_id,
+            payment_id=d.payment_id,
+            amount_inr=d.amount_inr,
+            card_network=d.card_network,
+            reason_code=d.reason_code,
+            confidence_score=d.confidence_score,
+            decision=d.decision,
+            timestamp=d.timestamp,
+            sealed_hash=d.sealed_hash,
+            expected_value_inr=d.expected_value_inr,
+            p_win=d.p_win
         )
+        for d in all_dossiers.values()
+    ]
     return list(reversed(summaries))
 
 
@@ -234,19 +243,28 @@ async def get_ledger_blocks(limit: int = 50, offset: int = 0):
 
 @app.get("/api/v1/stats", tags=["Analytics"])
 async def get_stats():
-    """Returns aggregate dashboard metrics, yield rates, and protected GMV."""
-    total = len(dossiers_db)
-    auto_dispatched = sum(1 for d in dossiers_db.values() if d.decision == "AUTO_DISPATCHED")
+    """Returns aggregate dashboard metrics, yield rates, and protected GMV.
+    
+    Reads from persistent DB on every call to ensure accuracy across
+    serverless instances (fixes stale in-memory cache divergence).
+    """
+    from app.core.db import db as _db
+    all_dossiers = _db.get_all_dossiers()
+    # Keep in-memory cache warm
+    dossiers_db.update(all_dossiers)
+
+    total = len(all_dossiers)
+    auto_dispatched = sum(1 for d in all_dossiers.values() if d.decision == "AUTO_DISPATCHED")
     hitl_queued = total - auto_dispatched
-    
-    total_gmv = sum(d.amount_inr for d in dossiers_db.values())
-    recovered_gmv = sum(d.amount_inr for d in dossiers_db.values() if d.decision == "AUTO_DISPATCHED")
-    
-    avg_score = (sum(d.confidence_score for d in dossiers_db.values()) / total) if total > 0 else 0.0
+
+    total_gmv = sum(d.amount_inr for d in all_dossiers.values())
+    recovered_gmv = sum(d.amount_inr for d in all_dossiers.values() if d.decision == "AUTO_DISPATCHED")
+
+    avg_score = (sum(d.confidence_score for d in all_dossiers.values()) / total) if total > 0 else 0.0
     yield_rate = (auto_dispatched / total * 100.0) if total > 0 else 0.0
-    
+
     integrity = ledger.verify_integrity()
-    
+
     return {
         "total_disputes": total,
         "auto_dispatched_count": auto_dispatched,
@@ -287,8 +305,10 @@ async def trigger_benchmark_run():
         t0 = time.time()
         dossier = execute_dispute_workflow(sc["payload"])
         latency_ms = round((time.time() - t0) * 1000, 2)
+        # Persist benchmark dossier to DB so results survive cold starts
         dossiers_db[dossier.dispute_id] = dossier
-        
+        db.save_dossier(dossier, sc["payload"])
+
         is_expected = (dossier.decision == sc["expected_decision"])
         results.append({
             "dispute_id": dossier.dispute_id,

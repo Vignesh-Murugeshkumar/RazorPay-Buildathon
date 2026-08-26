@@ -197,23 +197,23 @@ def test_sqlite_database_dossier_persistence():
     assert loaded.decision == dossier.decision
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_hitl_evidence_remediation_promotes_to_auto_dispatched():
     from app.main import remediate_dispute_evidence
     from app.schemas.remediation import RemediationEvidencePayload
     from app.graphs.dispute_graph import execute_dispute_workflow
     from app.core.db import db
-    
+
     # Create a dispute with missing carrier (Score = 60 -> HITL)
     payload = create_sample_payload(network="visa", reason_code="10.4", days1=150, days2=200)
     payload.carrier_proof = None
     payload.dispute_id = "disp_test_hitl_remediation"
-    
+
     initial_dossier = execute_dispute_workflow(payload)
     assert initial_dossier.confidence_score == 60.0
     assert initial_dossier.decision == "ROUTE_TO_HITL_QUEUE"
     db.save_dossier(initial_dossier, payload)
-    
+
     # Perform remediation: analyst uploads verified BlueDart delivery & GPS
     remediation_input = RemediationEvidencePayload(
         analyst_id="ANALYST_SHERLOCK",
@@ -226,11 +226,10 @@ async def test_hitl_evidence_remediation_promotes_to_auto_dispatched():
         gps_longitude=77.5946,
         mfa_authenticated=True
     )
-    
+
     remediated_dossier = await remediate_dispute_evidence(payload.dispute_id, remediation_input)
     assert remediated_dossier.confidence_score == 100.0
     assert remediated_dossier.decision == "AUTO_DISPATCHED"
     assert remediated_dossier.carrier_proof is not None
     assert remediated_dossier.carrier_proof.delivered_status is True
-
 
