@@ -63,6 +63,20 @@ services:
       timeout: 5s
       retries: 5
 
+  # Cloudflare Tunnel Service (Zero Trust Ingress)
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: sentinel_cloudflared
+    restart: always
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    command: tunnel --no-autoupdate run
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - sentinel_net
+
 volumes:
   postgres_data:
   redis_data:

@@ -152,6 +152,30 @@ docker run -p 3000:3000 \
 
 ---
 
+## ☁️ Cloudflare Zero Trust Tunnel Deployment
+
+Deploy SentinelDispute behind Cloudflare Edge with automatic SSL, DDoS protection, and Zero Trust access with **no open inbound firewall ports**:
+
+1. Go to **[Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/)** $\rightarrow$ **Networks** $\rightarrow$ **Tunnels** $\rightarrow$ **Create a Tunnel**.
+2. Select **Cloudflared** as the connector type and name your tunnel (e.g. `sentinel-dispute`).
+3. Under **Install and run a connector**, select **Docker** and copy the tunnel token (the long string following `--token`).
+4. Paste the token into your `.env` file:
+   ```env
+   CLOUDFLARE_TUNNEL_TOKEN=eyJhIjoiY...
+   ```
+5. In the Cloudflare dashboard, add a **Public Hostname**:
+   * **Subdomain**: `disputes` (or your preferred subdomain)
+   * **Domain**: `yourdomain.com`
+   * **Service Type**: `HTTP`
+   * **URL**: `app:3000` (matches internal Docker Compose service)
+6. Launch the stack:
+   ```bash
+   docker compose up -d
+   ```
+Cloudflare automatically handles SSL certificates, edge routing, and DDoS mitigation.
+
+---
+
 ## 🔌 API Reference
 
 | Method | Endpoint | Description |
