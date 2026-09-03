@@ -1,5 +1,6 @@
 import os
 import time
+import uuid
 from contextlib import asynccontextmanager
 from typing import List, Dict, Any, Optional
 
@@ -32,8 +33,11 @@ logger = get_logger("main")
 async def lifespan(app: FastAPI):
     """
     FastAPI Lifespan Context Manager.
-    Initializes services, registers genesis seeds, and handles graceful shutdowns.
+    Validates production readiness, initializes services, and gracefully cleans up pools.
     """
+    # Enforce production security check on boot
+    settings.validate_production_readiness()
+
     logger.info(
         "Initializing SentinelDispute Engine",
         environment=settings.ENVIRONMENT,
@@ -42,6 +46,8 @@ async def lifespan(app: FastAPI):
     )
     yield
     logger.info("Shutting down SentinelDispute Engine")
+    from app.core.db import db as _db
+    _db.close()
 
 
 app = FastAPI(
@@ -53,11 +59,45 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS Middleware
+# Production Security Headers & Correlation ID Middleware
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    correlation_id = request.headers.get("X-Correlation-Id") or str(uuid.uuid4())
+    request.state.correlation_id = correlation_id
+    response: Response = await call_next(request)
+    response.headers["X-Correlation-Id"] = correlation_id
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if settings.is_production:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
+
+# Global Sanitized Exception Handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    correlation_id = getattr(request.state, "correlation_id", str(uuid.uuid4()))
+    logger.error("Unhandled internal server exception", correlation_id=correlation_id, path=request.url.path, error=str(exc))
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "error": "Internal Server Error",
+            "message": "An unexpected error occurred while processing your request.",
+            "correlation_id": correlation_id
+        }
+    )
+
+
+# Hardened CORS Middleware
+cors_origins = settings.get_cors_origins()
+allow_creds = "*" not in cors_origins  # Wildcard with credentials violates CORS standards
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials=allow_creds,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -67,14 +107,26 @@ app.include_router(api_v1_router)
 
 
 @app.get("/api/v1/health", tags=["System"])
-async def health_check():
-    """System health check & audit status."""
+async def health_check(response: Response):
+    """Deep production health check: verifies application, database ping, and ledger integrity."""
+    from app.core.db import db as _db
+    db_status = _db.ping()
+    integrity = ledger.verify_integrity()
+
+    is_healthy = db_status.get("healthy", False) and integrity.is_valid
+    if not is_healthy:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+
     return {
-        "status": "healthy",
+        "status": "healthy" if is_healthy else "degraded",
         "service": settings.PROJECT_NAME,
         "version": settings.PROJECT_VERSION,
         "environment": settings.ENVIRONMENT,
-        "audit_blocks": ledger.get_total_count()
+        "database": db_status,
+        "audit_ledger": {
+            "total_blocks": ledger.get_total_count(),
+            "integrity_verified": integrity.is_valid
+        }
     }
 
 

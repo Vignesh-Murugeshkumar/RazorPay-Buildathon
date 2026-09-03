@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sentinel_dispute_app
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+      - RAZORPAY_WEBHOOK_SECRET=${RAZORPAY_WEBHOOK_SECRET:-sentinel_super_secret_production_key_2026}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-sentinel_super_secret_production_key_2026}
+      - DATABASE_URL=postgresql://postgres:postgres_secure_pass@db:5432/sentinel_dispute
+      - REDIS_URL=redis://cache:6379/0
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+    networks:
+      - sentinel_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/v1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  db:
+    image: postgres:16-alpine
+    container_name: sentinel_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_secure_pass
+      POSTGRES_DB: sentinel_dispute
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - sentinel_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sentinel_dispute"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  cache:
+    image: redis:7-alpine
+    container_name: sentinel_redis
+    restart: always
+    volumes:
+      - redis_data:/data
+    networks:
+      - sentinel_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  sentinel_net:
+    driver: bridge

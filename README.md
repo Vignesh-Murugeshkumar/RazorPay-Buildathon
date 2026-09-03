@@ -131,6 +131,27 @@ Vercel automatically detects `vercel.json` and routes `/api/*` and static assets
 
 ---
 
+## 🐳 Production Container Deployment (Docker & Gunicorn)
+
+For self-hosted Kubernetes, AWS ECS, GCP Cloud Run, or VPS:
+
+### 1. Run with Docker Compose (App + PostgreSQL + Redis)
+```bash
+docker compose up -d
+```
+
+### 2. Standalone Container Run
+```bash
+docker build -t sentinel-dispute:latest .
+docker run -p 3000:3000 \
+  -e ENVIRONMENT=production \
+  -e RAZORPAY_WEBHOOK_SECRET=your_production_secret \
+  -e DATABASE_URL=postgresql://user:pass@host:5432/db \
+  sentinel-dispute:latest
+```
+
+---
+
 ## 🔌 API Reference
 
 | Method | Endpoint | Description |

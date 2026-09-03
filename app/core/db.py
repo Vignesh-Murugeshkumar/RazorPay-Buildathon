@@ -2,6 +2,7 @@ import os
 import json
 import sqlite3
 import threading
+from contextlib import contextmanager
 from typing import List, Optional, Dict, Any
 from app.schemas.dispute import Dossier, RazorpayDisputeWebhook
 from app.services.ledger import LedgerBlock
@@ -37,6 +38,7 @@ class DatabaseManager:
             if cls._instance is None:
                 cls._instance = super(DatabaseManager, cls).__new__(cls)
                 cls._instance._is_postgres = False
+                cls._instance._pool = None
                 cls._instance._init_db()
             return cls._instance
 
@@ -146,6 +148,20 @@ class DatabaseManager:
                                 );
                             """)
                             
+                    try:
+                        from psycopg_pool import ConnectionPool
+                        self._pool = ConnectionPool(
+                            conninfo=self._pg_url,
+                            min_size=1,
+                            max_size=10,
+                            timeout=10.0,
+                            open=True
+                        )
+                        logger.info("Initialized PostgreSQL ConnectionPool (psycopg-pool) successfully")
+                    except Exception as pool_err:
+                        self._pool = None
+                        logger.warning("Could not initialize psycopg-pool, using direct connections", error=str(pool_err))
+
                     logger.info("Connected and initialized Supabase (PostgreSQL) database successfully")
                     return
                 except Exception as e:
@@ -239,6 +255,73 @@ class DatabaseManager:
             except Exception as e:
                 logger.error("Failed to initialize SQLite database", error=str(e), db_path=SQLITE_DB_PATH)
 
+    @contextmanager
+    def _get_pg_conn(self, row_factory=None):
+        """Yields a PostgreSQL connection from the connection pool, or creates an ad-hoc connection."""
+        if hasattr(self, "_pool") and self._pool is not None:
+            with self._pool.connection() as conn:
+                conn.autocommit = True
+                if row_factory:
+                    conn.row_factory = row_factory
+                yield conn
+        else:
+            import psycopg
+            with psycopg.connect(self._pg_url, autocommit=True, row_factory=row_factory) as conn:
+                yield conn
+
+    def ping(self) -> Dict[str, Any]:
+        """Production health check ping verifying live database connectivity."""
+        import time
+        t0 = time.time()
+        if self._is_postgres:
+            try:
+                with self._get_pg_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT 1;")
+                        cur.fetchone()
+                latency = round((time.time() - t0) * 1000, 2)
+                return {
+                    "healthy": True,
+                    "engine": "postgresql",
+                    "latency_ms": latency,
+                    "pooled": bool(hasattr(self, "_pool") and self._pool is not None)
+                }
+            except Exception as e:
+                return {
+                    "healthy": False,
+                    "engine": "postgresql",
+                    "error": str(e)
+                }
+        else:
+            try:
+                conn = sqlite3.connect(SQLITE_DB_PATH, timeout=5.0)
+                cur = conn.cursor()
+                cur.execute("SELECT 1;")
+                cur.fetchone()
+                conn.close()
+                latency = round((time.time() - t0) * 1000, 2)
+                return {
+                    "healthy": True,
+                    "engine": "sqlite",
+                    "path": SQLITE_DB_PATH,
+                    "latency_ms": latency
+                }
+            except Exception as e:
+                return {
+                    "healthy": False,
+                    "engine": "sqlite",
+                    "error": str(e)
+                }
+
+    def close(self):
+        """Gracefully closes connection pools on shutdown."""
+        if hasattr(self, "_pool") and self._pool:
+            try:
+                self._pool.close()
+                logger.info("Closed PostgreSQL connection pool")
+            except Exception as e:
+                logger.warning("Error closing PostgreSQL connection pool", error=str(e))
+
     # ------------------ DOSSIERS CRUD ------------------
     def save_dossier(self, dossier: Dossier, raw_payload: Optional[RazorpayDisputeWebhook] = None):
         with self._lock:
@@ -247,8 +330,7 @@ class DatabaseManager:
             
             if self._is_postgres:
                 try:
-                    import psycopg
-                    with psycopg.connect(self._pg_url, autocommit=True) as conn:
+                    with self._get_pg_conn() as conn:
                         with conn.cursor() as cur:
                             cur.execute("""
                                 INSERT INTO dossiers (
@@ -312,9 +394,8 @@ class DatabaseManager:
         with self._lock:
             if self._is_postgres:
                 try:
-                    import psycopg
                     from psycopg.rows import dict_row
-                    with psycopg.connect(self._pg_url, row_factory=dict_row) as conn:
+                    with self._get_pg_conn(row_factory=dict_row) as conn:
                         with conn.cursor() as cur:
                             cur.execute("SELECT dossier_json FROM dossiers WHERE dispute_id = %s", (dispute_id,))
                             row = cur.fetchone()
@@ -346,9 +427,8 @@ class DatabaseManager:
             result = {}
             if self._is_postgres:
                 try:
-                    import psycopg
                     from psycopg.rows import dict_row
-                    with psycopg.connect(self._pg_url, row_factory=dict_row) as conn:
+                    with self._get_pg_conn(row_factory=dict_row) as conn:
                         with conn.cursor() as cur:
                             cur.execute("SELECT dispute_id, dossier_json FROM dossiers ORDER BY updated_at ASC")
                             rows = cur.fetchall()
@@ -386,9 +466,8 @@ class DatabaseManager:
         with self._lock:
             if self._is_postgres:
                 try:
-                    import psycopg
                     from psycopg.rows import dict_row
-                    with psycopg.connect(self._pg_url, row_factory=dict_row) as conn:
+                    with self._get_pg_conn(row_factory=dict_row) as conn:
                         with conn.cursor() as cur:
                             cur.execute("SELECT raw_payload_json FROM dossiers WHERE dispute_id = %s", (dispute_id,))
                             row = cur.fetchone()
@@ -422,8 +501,7 @@ class DatabaseManager:
             
             if self._is_postgres:
                 try:
-                    import psycopg
-                    with psycopg.connect(self._pg_url, autocommit=True) as conn:
+                    with self._get_pg_conn() as conn:
                         with conn.cursor() as cur:
                             cur.execute("""
                                 INSERT INTO ledger_blocks (
@@ -474,9 +552,8 @@ class DatabaseManager:
             blocks = []
             if self._is_postgres:
                 try:
-                    import psycopg
                     from psycopg.rows import dict_row
-                    with psycopg.connect(self._pg_url, row_factory=dict_row) as conn:
+                    with self._get_pg_conn(row_factory=dict_row) as conn:
                         with conn.cursor() as cur:
                             cur.execute("""
                                 SELECT block_index, previous_hash, timestamp, agent_id, state_transition, payload_hash, block_hash
@@ -546,8 +623,7 @@ class DatabaseManager:
                     )
                 else:
                     try:
-                        import psycopg
-                        with psycopg.connect(self._pg_url, autocommit=True) as conn:
+                        with self._get_pg_conn() as conn:
                             with conn.cursor() as cur:
                                 cur.execute("TRUNCATE TABLE dossiers, ledger_blocks, processed_events;")
                         logger.info("Cleared all Supabase tables (test environment)")
@@ -576,9 +652,8 @@ class DatabaseManager:
         with self._lock:
             if self._is_postgres:
                 try:
-                    import psycopg
                     from psycopg.rows import dict_row
-                    with psycopg.connect(self._pg_url, autocommit=True, row_factory=dict_row) as conn:
+                    with self._get_pg_conn(row_factory=dict_row) as conn:
                         with conn.cursor() as cur:
                             cur.execute("SELECT event_id FROM processed_events WHERE event_id = %s", (event_id,))
                             if cur.fetchone() is not None:
@@ -607,6 +682,10 @@ class DatabaseManager:
                 conn.commit()
                 conn.close()
                 return True
+            except Exception as e:
+                logger.error("Error in SQLite record_and_verify_event", error=str(e))
+                return True
+
     # ------------------ TELEMETRY COLD STORAGE ------------------
     def insert_customer_telemetry(
         self,
@@ -625,8 +704,7 @@ class DatabaseManager:
             payload_str = json.dumps(payload or {})
             if self._is_postgres:
                 try:
-                    import psycopg
-                    with psycopg.connect(self._pg_url, autocommit=True) as conn:
+                    with self._get_pg_conn() as conn:
                         with conn.cursor() as cur:
                             cur.execute("""
                                 INSERT INTO customer_telemetry (
@@ -680,8 +758,7 @@ class DatabaseManager:
             payload_str = json.dumps(payload or {})
             if self._is_postgres:
                 try:
-                    import psycopg
-                    with psycopg.connect(self._pg_url, autocommit=True) as conn:
+                    with self._get_pg_conn() as conn:
                         with conn.cursor() as cur:
                             cur.execute("""
                                 INSERT INTO pre_dispute_logs (
@@ -737,8 +814,7 @@ class DatabaseManager:
             evidence_json = json.dumps(evidence_types_used or [])
             if self._is_postgres:
                 try:
-                    import psycopg
-                    with psycopg.connect(self._pg_url, autocommit=True) as conn:
+                    with self._get_pg_conn() as conn:
                         with conn.cursor() as cur:
                             cur.execute("""
                                 INSERT INTO dispute_outcomes (
@@ -786,9 +862,8 @@ class DatabaseManager:
             results = []
             if self._is_postgres:
                 try:
-                    import psycopg
                     from psycopg.rows import dict_row
-                    with psycopg.connect(self._pg_url, autocommit=True, row_factory=dict_row) as conn:
+                    with self._get_pg_conn(row_factory=dict_row) as conn:
                         with conn.cursor() as cur:
                             if card_bin:
                                 cur.execute("SELECT * FROM dispute_outcomes WHERE card_bin = %s", (card_bin,))

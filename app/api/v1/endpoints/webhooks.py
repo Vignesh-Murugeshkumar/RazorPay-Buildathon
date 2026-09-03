@@ -33,6 +33,19 @@ async def handle_razorpay_dispute_webhook(
     correlation_id = str(uuid.uuid4())
     raw_body = await request.body()
 
+    # 0. Enforce Payload Size Limit (DDoS / Memory Exhaustion Guard)
+    if len(raw_body) > settings.MAX_REQUEST_BODY_BYTES:
+        logger.warning(
+            "Rejected webhook exceeding maximum body size",
+            correlation_id=correlation_id,
+            size_bytes=len(raw_body),
+            max_bytes=settings.MAX_REQUEST_BODY_BYTES
+        )
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Webhook payload exceeds maximum size limit of {settings.MAX_REQUEST_BODY_BYTES // 1024} KB"
+        )
+
     # 1. Timestamp Freshness / Replay Guard
     if x_razorpay_event_time is not None:
         if not validate_webhook_timestamp(x_razorpay_event_time, tolerance_seconds=300):
@@ -45,6 +58,12 @@ async def handle_razorpay_dispute_webhook(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Webhook timestamp outside 5-minute tolerance window"
             )
+    elif settings.is_production:
+        logger.warning("Rejected production webhook: Missing X-Razorpay-Event-Time", correlation_id=correlation_id)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing required X-Razorpay-Event-Time header in production"
+        )
 
     # 2. Event ID Nonce / Replay Guard
     if x_razorpay_event_id is not None:
@@ -81,6 +100,12 @@ async def handle_razorpay_dispute_webhook(
                 detail="Invalid Razorpay webhook HMAC-SHA256 signature"
             )
     else:
+        if settings.is_production:
+            logger.warning("Rejected production webhook: Missing X-Razorpay-Signature header", correlation_id=correlation_id)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Missing required X-Razorpay-Signature header in production environment"
+            )
         logger.info("Webhook received without signature header (dev/testing mode)", correlation_id=correlation_id)
 
     # 4. Validate Schema
