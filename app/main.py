@@ -404,7 +404,11 @@ async def trigger_benchmark_run():
 
 
 # Mount Static Files & Dashboard UI
-static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
+_base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+static_dir = os.path.join(_base_dir, "static")
+if not os.path.exists(static_dir):
+    static_dir = os.path.abspath("static")
+
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 

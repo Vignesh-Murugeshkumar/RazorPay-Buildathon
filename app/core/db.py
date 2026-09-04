@@ -111,10 +111,9 @@ class DatabaseManager:
                     self._is_postgres = True
 
                     
-                    # Initialize PostgreSQL / Supabase tables with strict 3s connect timeout and disable prepared statements for PgBouncer
-                    with psycopg.connect(self._pg_url, autocommit=True, connect_timeout=3, prepare_threshold=None) as conn:
+                    # Initialize PostgreSQL / Supabase tables with consolidated DDL execution and 5s connect timeout
+                    with psycopg.connect(self._pg_url, autocommit=True, connect_timeout=5, prepare_threshold=None) as conn:
                         with conn.cursor() as cur:
-                            # 1. Dossiers Table (with JSONB)
                             cur.execute("""
                                 CREATE TABLE IF NOT EXISTS dossiers (
                                     dispute_id VARCHAR PRIMARY KEY,
@@ -130,10 +129,7 @@ class DatabaseManager:
                                     raw_payload_json JSONB,
                                     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                                 );
-                            """)
-                            
-                            # 2. Ledger Blocks Table
-                            cur.execute("""
+                                
                                 CREATE TABLE IF NOT EXISTS ledger_blocks (
                                     block_index INTEGER PRIMARY KEY,
                                     previous_hash VARCHAR NOT NULL,
@@ -144,19 +140,13 @@ class DatabaseManager:
                                     block_hash VARCHAR NOT NULL,
                                     payload_json JSONB
                                 );
-                            """)
-                            
-                            # 3. Processed Events / Replay Guard Table
-                            cur.execute("""
+                                
                                 CREATE TABLE IF NOT EXISTS processed_events (
                                     event_id VARCHAR PRIMARY KEY,
                                     signature VARCHAR,
                                     received_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                                 );
-                            """)
 
-                            # 4. Customer Telemetry Table (Partitioned / Indexed Cold Storage)
-                            cur.execute("""
                                 CREATE TABLE IF NOT EXISTS customer_telemetry (
                                     id UUID PRIMARY KEY,
                                     card_fingerprint VARCHAR(64) NOT NULL,
@@ -170,10 +160,7 @@ class DatabaseManager:
                                     payload_json JSONB
                                 );
                                 CREATE INDEX IF NOT EXISTS idx_telemetry_lookup ON customer_telemetry (card_fingerprint, transaction_time DESC);
-                            """)
 
-                            # 5. Pre-Dispute Interception Logs Table
-                            cur.execute("""
                                 CREATE TABLE IF NOT EXISTS pre_dispute_logs (
                                     inquiry_id VARCHAR PRIMARY KEY,
                                     network VARCHAR NOT NULL,
@@ -184,10 +171,7 @@ class DatabaseManager:
                                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                                     payload_json JSONB
                                 );
-                            """)
 
-                            # 6. Dispute Resolution Outcomes Table (Closed-Loop ML)
-                            cur.execute("""
                                 CREATE TABLE IF NOT EXISTS dispute_outcomes (
                                     dispute_id VARCHAR PRIMARY KEY,
                                     card_bin VARCHAR(8),
@@ -202,20 +186,25 @@ class DatabaseManager:
                                 );
                             """)
                             
-                    try:
-                        from psycopg_pool import ConnectionPool
-                        self._pool = ConnectionPool(
-                            conninfo=self._pg_url,
-                            min_size=1,
-                            max_size=10,
-                            timeout=3.0,
-                            kwargs={"connect_timeout": 3, "prepare_threshold": None},
-                            open=True
-                        )
-                        logger.info("Initialized PostgreSQL ConnectionPool (psycopg-pool) successfully")
-                    except Exception as pool_err:
+                    is_serverless = bool(os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
+                    if is_serverless:
                         self._pool = None
-                        logger.warning("Could not initialize psycopg-pool, using direct connections", error=str(pool_err))
+                        logger.info("Serverless runtime detected; using direct connections to Supabase PgBouncer pooler")
+                    else:
+                        try:
+                            from psycopg_pool import ConnectionPool
+                            self._pool = ConnectionPool(
+                                conninfo=self._pg_url,
+                                min_size=1,
+                                max_size=10,
+                                timeout=5.0,
+                                kwargs={"connect_timeout": 5, "prepare_threshold": None},
+                                open=True
+                            )
+                            logger.info("Initialized PostgreSQL ConnectionPool (psycopg-pool) successfully")
+                        except Exception as pool_err:
+                            self._pool = None
+                            logger.warning("Could not initialize psycopg-pool, using direct connections", error=str(pool_err))
 
                     logger.info("Connected and initialized Supabase (PostgreSQL) database successfully")
                     return
@@ -227,6 +216,7 @@ class DatabaseManager:
             try:
                 self._is_postgres = False
                 conn = sqlite3.connect(SQLITE_DB_PATH, check_same_thread=False, timeout=15.0)
+
                 cur = conn.cursor()
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS dossiers (
@@ -321,7 +311,7 @@ class DatabaseManager:
                 yield conn
         else:
             import psycopg
-            with psycopg.connect(self._pg_url, autocommit=True, row_factory=row_factory, connect_timeout=3, prepare_threshold=None) as conn:
+            with psycopg.connect(self._pg_url, autocommit=True, row_factory=row_factory, connect_timeout=5, prepare_threshold=None) as conn:
                 yield conn
 
     def ping(self) -> Dict[str, Any]:
