@@ -11,7 +11,9 @@ try:
     from app.main import app
 except Exception as exc:
     import logging
+    error_msg = str(exc)
     error_details = traceback.format_exc()
+    error_lines = error_details.splitlines()[-15:]
     logging.error(f"FATAL STARTUP EXCEPTION in SentinelDispute: {error_details}")
 
     from fastapi import FastAPI
@@ -25,8 +27,8 @@ except Exception as exc:
             status_code=500,
             content={
                 "error": "Startup Initialization Failure",
-                "detail": str(exc),
-                "traceback": error_details.splitlines()[-12:],
+                "detail": error_msg,
+                "traceback": error_lines,
                 "sys_path": sys.path,
                 "root_dir": ROOT_DIR
             }

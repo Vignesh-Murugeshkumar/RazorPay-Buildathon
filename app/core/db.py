@@ -37,6 +37,8 @@ def sanitize_postgres_url(url: Optional[str]) -> Optional[str]:
                 if "@" in password:
                     encoded_password = urllib.parse.quote(password, safe="")
                     cleaned = f"{prefix}://{username}:{encoded_password}@{host_db}"
+        except Exception:
+            pass
     if "supabase.com" in cleaned and "sslmode" not in cleaned:
         separator = "&" if "?" in cleaned else "?"
         cleaned = f"{cleaned}{separator}sslmode=require"
