@@ -407,6 +407,12 @@ if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+@app.get("/favicon.png", include_in_schema=False)
+async def favicon():
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def serve_index():
     index_path = os.path.join(static_dir, "index.html")
@@ -425,3 +431,4 @@ async def serve_index():
         </html>
         """
     )
+

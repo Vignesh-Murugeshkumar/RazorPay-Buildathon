@@ -82,8 +82,8 @@ class DatabaseManager:
                     self._is_postgres = True
 
                     
-                    # Initialize PostgreSQL / Supabase tables
-                    with psycopg.connect(self._pg_url, autocommit=True) as conn:
+                    # Initialize PostgreSQL / Supabase tables with strict 3s connect timeout
+                    with psycopg.connect(self._pg_url, autocommit=True, connect_timeout=3) as conn:
                         with conn.cursor() as cur:
                             # 1. Dossiers Table (with JSONB)
                             cur.execute("""
@@ -179,7 +179,8 @@ class DatabaseManager:
                             conninfo=self._pg_url,
                             min_size=1,
                             max_size=10,
-                            timeout=10.0,
+                            timeout=3.0,
+                            kwargs={"connect_timeout": 3},
                             open=True
                         )
                         logger.info("Initialized PostgreSQL ConnectionPool (psycopg-pool) successfully")
@@ -291,7 +292,7 @@ class DatabaseManager:
                 yield conn
         else:
             import psycopg
-            with psycopg.connect(self._pg_url, autocommit=True, row_factory=row_factory) as conn:
+            with psycopg.connect(self._pg_url, autocommit=True, row_factory=row_factory, connect_timeout=3) as conn:
                 yield conn
 
     def ping(self) -> Dict[str, Any]:
