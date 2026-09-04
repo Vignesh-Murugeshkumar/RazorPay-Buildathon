@@ -45,7 +45,7 @@ async def lifespan(app: FastAPI):
         "Initializing SentinelDispute Engine",
         environment=settings.ENVIRONMENT,
         version=settings.PROJECT_VERSION,
-        audit_blocks=ledger.get_total_count()
+        audit_blocks=len(ledger.chain)
     )
     yield
     logger.info("Shutting down SentinelDispute Engine")

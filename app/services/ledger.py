@@ -47,22 +47,30 @@ class AuditLedger:
         if getattr(self, "_initialized", False):
             return
         self.chain: List[LedgerBlock] = []
-        
-        # Attempt to load persistent chain from DB
-        try:
-            from app.core.db import db
-            persisted_blocks = db.load_all_ledger_blocks()
-            if persisted_blocks:
-                self.chain = persisted_blocks
-        except Exception:
-            pass
-
-        if not self.chain:
-            seed = genesis_seed or genesis_signature
-            self._init_genesis_block(seed)
+        self._genesis_seed = genesis_seed or genesis_signature or "GENESIS_SENTINEL_DISPUTE_RAZORPAY_SEED_2026"
+        self._db_synced = False
+        self._init_genesis_block(self._genesis_seed, save_to_db=False)
         self._initialized = True
 
-    def _init_genesis_block(self, genesis_seed: Optional[str] = None):
+    def _sync_with_db(self):
+        """Lazily syncs with persistent DB on demand, never blocking module import."""
+        if getattr(self, "_db_synced", False):
+            return
+        with self._lock:
+            if getattr(self, "_db_synced", False):
+                return
+            self._db_synced = True
+            try:
+                from app.core.db import db
+                persisted_blocks = db.load_all_ledger_blocks()
+                if persisted_blocks:
+                    self.chain = persisted_blocks
+                elif self.chain:
+                    db.save_ledger_block(self.chain[0], {"genesis_seed": self._genesis_seed})
+            except Exception:
+                pass
+
+    def _init_genesis_block(self, genesis_seed: Optional[str] = None, save_to_db: bool = True):
         timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
         seed = genesis_seed or "GENESIS_SENTINEL_DISPUTE_RAZORPAY_SEED_2026"
         payload_hash = compute_sha256_hash(seed)
@@ -82,12 +90,13 @@ class AuditLedger:
             payload_hash=payload_hash,
             block_hash=block_hash
         )
-        self.chain.append(genesis_block)
-        try:
-            from app.core.db import db
-            db.save_ledger_block(genesis_block, {"genesis_seed": seed})
-        except Exception:
-            pass
+        self.chain = [genesis_block]
+        if save_to_db:
+            try:
+                from app.core.db import db
+                db.save_ledger_block(genesis_block, {"genesis_seed": seed})
+            except Exception:
+                pass
 
     def append_block(
         self,
@@ -130,18 +139,22 @@ class AuditLedger:
             return new_block
 
     def get_blocks(self, limit: int = 100, offset: int = 0) -> List[LedgerBlock]:
+        self._sync_with_db()
         with self._lock:
             return list(reversed(self.chain[offset:offset + limit]))
 
     def get_all_blocks(self) -> List[LedgerBlock]:
+        self._sync_with_db()
         with self._lock:
             return list(self.chain)
 
     def get_total_count(self) -> int:
+        self._sync_with_db()
         with self._lock:
             return len(self.chain)
 
     def verify_integrity(self) -> LedgerIntegrityReport:
+        self._sync_with_db()
         with self._lock:
             verified_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
             if not self.chain:

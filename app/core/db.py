@@ -81,23 +81,21 @@ class DatabaseManager:
                 cls._instance._is_postgres = False
                 cls._instance._pool = None
                 cls._instance._initialized = False
-                # Defer actual DB connection to first use so module import
-                # never crashes on a cold start / missing env var.
-                try:
-                    cls._instance._init_db()
-                    cls._instance._initialized = True
-                except Exception as _e:
-                    # Log but DO NOT re-raise — the module must always load.
-                    import traceback as _tb
-                    try:
-                        logger.warning(
-                            "DatabaseManager cold-start init failed, will retry on first request",
-                            error=str(_e),
-                            traceback=_tb.format_exc()
-                        )
-                    except Exception:
-                        pass  # logger might also fail; never crash import
             return cls._instance
+
+    def _ensure_initialized(self):
+        """Thread-safe lazy initialization deferred to first actual DB operation."""
+        if getattr(self, "_initialized", False):
+            return
+        with self._lock:
+            if getattr(self, "_initialized", False):
+                return
+            try:
+                self._init_db()
+            except Exception as _e:
+                logger.warning("DatabaseManager lazy initialization failed, falling back to SQLite", error=str(_e))
+                self._is_postgres = False
+            self._initialized = True
 
     def _init_db(self):
         with self._lock:
@@ -110,9 +108,14 @@ class DatabaseManager:
                     self._pg_url = cleaned_url
                     self._is_postgres = True
 
-                    
-                    # Initialize PostgreSQL / Supabase tables with consolidated DDL execution and 5s connect timeout
-                    with psycopg.connect(self._pg_url, autocommit=True, connect_timeout=5, prepare_threshold=None) as conn:
+                    # Initialize PostgreSQL / Supabase tables with fast fail-safe connect and 3s statement timeout
+                    with psycopg.connect(
+                        self._pg_url,
+                        autocommit=True,
+                        connect_timeout=3,
+                        prepare_threshold=None,
+                        options="-c statement_timeout=3000"
+                    ) as conn:
                         with conn.cursor() as cur:
                             cur.execute("""
                                 CREATE TABLE IF NOT EXISTS dossiers (
@@ -303,6 +306,7 @@ class DatabaseManager:
     @contextmanager
     def _get_pg_conn(self, row_factory=None):
         """Yields a PostgreSQL connection from the connection pool, or creates an ad-hoc connection."""
+        self._ensure_initialized()
         if hasattr(self, "_pool") and self._pool is not None:
             with self._pool.connection() as conn:
                 conn.autocommit = True
@@ -311,11 +315,19 @@ class DatabaseManager:
                 yield conn
         else:
             import psycopg
-            with psycopg.connect(self._pg_url, autocommit=True, row_factory=row_factory, connect_timeout=5, prepare_threshold=None) as conn:
+            with psycopg.connect(
+                self._pg_url,
+                autocommit=True,
+                row_factory=row_factory,
+                connect_timeout=3,
+                prepare_threshold=None,
+                options="-c statement_timeout=3000"
+            ) as conn:
                 yield conn
 
     def ping(self) -> Dict[str, Any]:
         """Production health check ping verifying live database connectivity."""
+        self._ensure_initialized()
         import time
         t0 = time.time()
         if self._is_postgres:
@@ -369,6 +381,7 @@ class DatabaseManager:
 
     # ------------------ DOSSIERS CRUD ------------------
     def save_dossier(self, dossier: Dossier, raw_payload: Optional[RazorpayDisputeWebhook] = None):
+        self._ensure_initialized()
         with self._lock:
             dossier_dict = dossier.model_dump()
             raw_dict = raw_payload.model_dump() if raw_payload else None
@@ -436,6 +449,7 @@ class DatabaseManager:
                 logger.error("Error saving dossier to SQLite", dispute_id=dossier.dispute_id, error=str(e))
 
     def get_dossier(self, dispute_id: str) -> Optional[Dossier]:
+        self._ensure_initialized()
         with self._lock:
             if self._is_postgres:
                 try:
@@ -468,6 +482,7 @@ class DatabaseManager:
             return None
 
     def get_all_dossiers(self) -> Dict[str, Dossier]:
+        self._ensure_initialized()
         with self._lock:
             result = {}
             if self._is_postgres:
@@ -508,6 +523,7 @@ class DatabaseManager:
             return result
 
     def get_raw_payload(self, dispute_id: str) -> Optional[RazorpayDisputeWebhook]:
+        self._ensure_initialized()
         with self._lock:
             if self._is_postgres:
                 try:
@@ -541,6 +557,7 @@ class DatabaseManager:
 
     # ------------------ LEDGER BLOCKS CRUD ------------------
     def save_ledger_block(self, block: LedgerBlock, payload_data: Any = None):
+        self._ensure_initialized()
         with self._lock:
             payload_json = json.dumps(payload_data) if payload_data else None
             
@@ -593,6 +610,7 @@ class DatabaseManager:
                 logger.error("Error persisting ledger block to SQLite", index=block.index, error=str(e))
 
     def load_all_ledger_blocks(self) -> List[LedgerBlock]:
+        self._ensure_initialized()
         with self._lock:
             blocks = []
             if self._is_postgres:
