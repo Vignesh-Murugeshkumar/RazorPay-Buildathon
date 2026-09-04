@@ -1,5 +1,5 @@
 from typing import List, Dict, Any
-from app.models.dispute import (
+from app.schemas.dispute import (
     DisputePayload,
     CustomerTelemetry,
     CarrierProof,

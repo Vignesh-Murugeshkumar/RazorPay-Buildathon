@@ -1,5 +1,5 @@
 from typing import List, Dict, Tuple, Any
-from app.models.dispute import (
+from app.schemas.dispute import (
     DisputePayload,
     HistoricalTransaction,
     RuleEvaluationResult

@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.core.config import settings, Settings
 from app.core.db import db
-from app.security import generate_razorpay_signature
+from app.core.security import generate_razorpay_signature
 
 client = TestClient(app)
 

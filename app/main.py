@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from app.core.config import settings
 from app.core.logger import get_logger
 from app.api import api_v1_router
-from app.api.v1.endpoints.webhooks import dossiers_db
+from app.api.v1.endpoints.webhooks import get_dossiers_db, dossiers_db
 from app.schemas.dispute import (
     RazorpayDisputeWebhook,
     DisputePayload,
@@ -147,7 +147,7 @@ async def list_disputes():
     from app.core.db import db as _db
     all_dossiers = _db.get_all_dossiers()
     # Keep in-memory cache warm for other endpoints that still use it
-    dossiers_db.update(all_dossiers)
+    get_dossiers_db().update(all_dossiers)
     summaries = [
         DisputeSummary(
             dispute_id=d.dispute_id,
@@ -181,11 +181,12 @@ from app.schemas.remediation import RemediationEvidencePayload
 @app.get("/api/v1/disputes/{dispute_id}", response_model=Dossier, tags=["Disputes"])
 async def get_dispute(dispute_id: str):
     """Returns full evidence dossier and evaluation trace."""
-    if dispute_id in dossiers_db:
-        return dossiers_db[dispute_id]
+    cache = get_dossiers_db()
+    if dispute_id in cache:
+        return cache[dispute_id]
     dossier = db.get_dossier(dispute_id)
     if dossier:
-        dossiers_db[dispute_id] = dossier
+        cache[dispute_id] = dossier
         return dossier
     raise HTTPException(status_code=404, detail="Dispute dossier not found")
 
@@ -199,8 +200,9 @@ async def remediate_dispute_evidence(dispute_id: str, remediation: RemediationEv
     """
     raw_payload = db.get_raw_payload(dispute_id)
     if not raw_payload:
-        if dispute_id in dossiers_db:
-            d = dossiers_db[dispute_id]
+        cache = get_dossiers_db()
+        if dispute_id in cache:
+            d = cache[dispute_id]
             raw_payload = RazorpayDisputeWebhook(
                 dispute_id=d.dispute_id,
                 payment_id=d.payment_id,
@@ -276,7 +278,7 @@ async def remediate_dispute_evidence(dispute_id: str, remediation: RemediationEv
 
     # Re-evaluate through deterministic workflow
     dossier = execute_dispute_workflow(raw_payload)
-    dossiers_db[dossier.dispute_id] = dossier
+    get_dossiers_db()[dossier.dispute_id] = dossier
     db.save_dossier(dossier, raw_payload)
     
     logger.info(

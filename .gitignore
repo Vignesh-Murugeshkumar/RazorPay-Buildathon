@@ -1,0 +1,41 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Secrets and Environment configs
+.env
+.env.*
+!.env.example
+
+# Virtual Environments
+venv/
+.venv/
+ENV/
+env/
+
+# Testing caches & coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+sentinel_dispute.db
+
+# Vercel and deployment artifacts
+.vercel/
+
+# Node / JS artifacts (Pure Python project)
+package.json
+package-lock.json
+node_modules/
+
+# OS and Editor metadata
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

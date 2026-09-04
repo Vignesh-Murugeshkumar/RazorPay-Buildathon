@@ -6,7 +6,7 @@ import json
 # Ensure project root is on sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.security import generate_razorpay_signature
+from app.core.security import generate_razorpay_signature
 
 
 def verify_deployment(base_url: str = "http://localhost:3000", webhook_secret: str = "sentinel_secret_key_dev"):

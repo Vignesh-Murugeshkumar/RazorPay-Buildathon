@@ -1,6 +1,6 @@
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
-from app.models.dispute import DisputePayload
+from app.schemas.dispute import DisputePayload
 from app.core.logger import get_logger
 
 logger = get_logger("rag_rebuttal_synthesizer")

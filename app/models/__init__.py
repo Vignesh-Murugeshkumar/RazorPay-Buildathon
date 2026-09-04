@@ -1,4 +1,9 @@
-from app.models.dispute import (
+"""
+DEPRECATED: app/models is consolidated into app/schemas and app/services.
+All dispute schemas reside in app.schemas.dispute.
+All ledger models reside in app.services.ledger.
+"""
+from app.schemas.dispute import (
     CustomerTelemetry,
     CarrierProof,
     HistoricalTransaction,
@@ -7,7 +12,7 @@ from app.models.dispute import (
     Dossier,
     DisputeSummary
 )
-from app.models.ledger import LedgerBlock, LedgerIntegrityReport
+from app.services.ledger import LedgerBlock, LedgerIntegrityReport
 
 __all__ = [
     "CustomerTelemetry",
