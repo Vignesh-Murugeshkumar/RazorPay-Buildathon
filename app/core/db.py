@@ -37,8 +37,9 @@ def sanitize_postgres_url(url: Optional[str]) -> Optional[str]:
                 if "@" in password:
                     encoded_password = urllib.parse.quote(password, safe="")
                     cleaned = f"{prefix}://{username}:{encoded_password}@{host_db}"
-        except Exception:
-            pass
+    if "supabase.com" in cleaned and "sslmode" not in cleaned:
+        separator = "&" if "?" in cleaned else "?"
+        cleaned = f"{cleaned}{separator}sslmode=require"
     return cleaned
 
 
@@ -82,8 +83,8 @@ class DatabaseManager:
                     self._is_postgres = True
 
                     
-                    # Initialize PostgreSQL / Supabase tables with strict 3s connect timeout
-                    with psycopg.connect(self._pg_url, autocommit=True, connect_timeout=3) as conn:
+                    # Initialize PostgreSQL / Supabase tables with strict 3s connect timeout and disable prepared statements for PgBouncer
+                    with psycopg.connect(self._pg_url, autocommit=True, connect_timeout=3, prepare_threshold=None) as conn:
                         with conn.cursor() as cur:
                             # 1. Dossiers Table (with JSONB)
                             cur.execute("""
@@ -180,7 +181,7 @@ class DatabaseManager:
                             min_size=1,
                             max_size=10,
                             timeout=3.0,
-                            kwargs={"connect_timeout": 3},
+                            kwargs={"connect_timeout": 3, "prepare_threshold": None},
                             open=True
                         )
                         logger.info("Initialized PostgreSQL ConnectionPool (psycopg-pool) successfully")
@@ -292,7 +293,7 @@ class DatabaseManager:
                 yield conn
         else:
             import psycopg
-            with psycopg.connect(self._pg_url, autocommit=True, row_factory=row_factory, connect_timeout=3) as conn:
+            with psycopg.connect(self._pg_url, autocommit=True, row_factory=row_factory, connect_timeout=3, prepare_threshold=None) as conn:
                 yield conn
 
     def ping(self) -> Dict[str, Any]:
