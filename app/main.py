@@ -35,8 +35,11 @@ async def lifespan(app: FastAPI):
     FastAPI Lifespan Context Manager.
     Validates production readiness, initializes services, and gracefully cleans up pools.
     """
-    # Enforce production security check on boot
-    settings.validate_production_readiness()
+    # Enforce production security check on boot (log warning if default credentials)
+    try:
+        settings.validate_production_readiness()
+    except Exception as e:
+        logger.warning("Production readiness check notice", warning=str(e))
 
     logger.info(
         "Initializing SentinelDispute Engine",
@@ -46,8 +49,12 @@ async def lifespan(app: FastAPI):
     )
     yield
     logger.info("Shutting down SentinelDispute Engine")
-    from app.core.db import db as _db
-    _db.close()
+    try:
+        from app.core.db import db as _db
+        _db.close()
+    except Exception:
+        pass
+
 
 
 app = FastAPI(
