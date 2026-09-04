@@ -21,6 +21,9 @@ dependencies = [
     "gunicorn>=21.2.0",
 ]
 
+[tool.vercel]
+entrypoint = "api.index:app"
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

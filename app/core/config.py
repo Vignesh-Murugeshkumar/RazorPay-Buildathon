@@ -13,7 +13,9 @@ class Settings(BaseSettings):
     PROJECT_VERSION: str = "1.0.0"
     API_PREFIX: str = "/api/v1"
     
-    # Security & Razorpay Webhook Configuration
+    # Security & Razorpay Configuration
+    RAZORPAY_KEY_ID: Optional[str] = os.getenv("RAZORPAY_KEY_ID", None)
+    RAZORPAY_KEY_SECRET: Optional[str] = os.getenv("RAZORPAY_KEY_SECRET", None)
     RAZORPAY_WEBHOOK_SECRET: str = os.getenv("RAZORPAY_WEBHOOK_SECRET", "sentinel_secret_key_dev")
     WEBHOOK_SECRET: str = os.getenv("WEBHOOK_SECRET", "sentinel_secret_key_dev")
     
