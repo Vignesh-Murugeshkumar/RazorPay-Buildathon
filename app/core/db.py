@@ -15,10 +15,38 @@ DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DATABASE_URL") o
 # Set ENVIRONMENT=test or TEST_MODE=1 to allow clear_all_data() on SQLite only
 _IS_TEST_ENV = os.getenv("ENVIRONMENT", "development").lower() in ("test", "testing") or os.getenv("TEST_MODE", "0") == "1"
 
-# Determine optimal fallback SQLite path for local/offline dev
+def sanitize_postgres_url(url: Optional[str]) -> Optional[str]:
+    """Cleans up and automatically URL-encodes passwords in PostgreSQL connection URLs."""
+    if not url or "[YOUR-PASSWORD]" in url:
+        return None
+    cleaned = url.strip()
+    if cleaned.startswith("postgres://"):
+        cleaned = cleaned.replace("postgres://", "postgresql://", 1)
+    
+    # Check if there are multiple '@' characters in the userinfo section
+    if cleaned.count("@") > 1 and "://" in cleaned:
+        try:
+            import urllib.parse
+            prefix, rest = cleaned.split("://", 1)
+            last_at = rest.rfind("@")
+            user_pass = rest[:last_at]
+            host_db = rest[last_at + 1:]
+            if ":" in user_pass:
+                username, password = user_pass.split(":", 1)
+                # Only encode if unencoded '@' is in password
+                if "@" in password:
+                    encoded_password = urllib.parse.quote(password, safe="")
+                    cleaned = f"{prefix}://{username}:{encoded_password}@{host_db}"
+        except Exception:
+            pass
+    return cleaned
+
+
+# Determine optimal fallback SQLite path for local/offline dev or serverless
 SQLITE_DB_PATH = os.getenv("SQLITE_DB_PATH")
 if not SQLITE_DB_PATH:
-    if os.path.exists("/tmp") and not os.access(".", os.W_OK):
+    if os.path.exists("/tmp"):
+        # Serverless / Linux runtime: /tmp is guaranteed writable
         SQLITE_DB_PATH = "/tmp/sentinel_dispute.db"
     else:
         SQLITE_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "sentinel_dispute.db")
@@ -44,18 +72,15 @@ class DatabaseManager:
 
     def _init_db(self):
         with self._lock:
-            if DATABASE_URL:
+            cleaned_url = sanitize_postgres_url(DATABASE_URL)
+            if cleaned_url:
                 try:
-                    # Clean up url if needed (e.g. postgres:// to postgresql://)
-                    pg_url = DATABASE_URL
-                    if pg_url.startswith("postgres://"):
-                        pg_url = pg_url.replace("postgres://", "postgresql://", 1)
-                    
                     import psycopg
                     from psycopg.rows import dict_row
                     
-                    self._pg_url = pg_url
+                    self._pg_url = cleaned_url
                     self._is_postgres = True
+
                     
                     # Initialize PostgreSQL / Supabase tables
                     with psycopg.connect(self._pg_url, autocommit=True) as conn:
