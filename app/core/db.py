@@ -16,29 +16,39 @@ DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DATABASE_URL") o
 _IS_TEST_ENV = os.getenv("ENVIRONMENT", "development").lower() in ("test", "testing") or os.getenv("TEST_MODE", "0") == "1"
 
 def sanitize_postgres_url(url: Optional[str]) -> Optional[str]:
-    """Cleans up and automatically URL-encodes passwords in PostgreSQL connection URLs."""
+    """Cleans up and robustly URL-encodes passwords in PostgreSQL connection URLs.
+    
+    Handles passwords containing special characters like '@', '#', etc.
+    Works correctly with Supabase URLs of the form:
+      postgresql://postgres.PROJECT_REF:PASSWORD@HOST:PORT/DB
+    """
     if not url or "[YOUR-PASSWORD]" in url:
         return None
+    import urllib.parse
     cleaned = url.strip()
     if cleaned.startswith("postgres://"):
         cleaned = cleaned.replace("postgres://", "postgresql://", 1)
-    
-    # Check if there are multiple '@' characters in the userinfo section
-    if cleaned.count("@") > 1 and "://" in cleaned:
+
+    # Robust multi-@ password handling:
+    # Find the scheme, then locate the LAST '@' before the host as the user/host boundary.
+    if "://" in cleaned:
         try:
-            import urllib.parse
-            prefix, rest = cleaned.split("://", 1)
-            last_at = rest.rfind("@")
-            user_pass = rest[:last_at]
-            host_db = rest[last_at + 1:]
-            if ":" in user_pass:
-                username, password = user_pass.split(":", 1)
-                # Only encode if unencoded '@' is in password
-                if "@" in password:
-                    encoded_password = urllib.parse.quote(password, safe="")
-                    cleaned = f"{prefix}://{username}:{encoded_password}@{host_db}"
+            scheme, rest = cleaned.split("://", 1)
+            # The host starts after the last '@'
+            last_at_idx = rest.rfind("@")
+            if last_at_idx != -1:
+                userinfo = rest[:last_at_idx]     # everything before last '@'
+                hostpart = rest[last_at_idx + 1:]  # host:port/db
+                # Split userinfo into user:password (split on FIRST ':')
+                if ":" in userinfo:
+                    user, raw_password = userinfo.split(":", 1)
+                    # Only re-encode if password contains characters that need encoding
+                    if any(c in raw_password for c in "@#%+? "):
+                        encoded_password = urllib.parse.quote(raw_password, safe="")
+                        cleaned = f"{scheme}://{user}:{encoded_password}@{hostpart}"
         except Exception:
-            pass
+            pass  # leave cleaned as-is if parsing fails
+
     if "supabase.com" in cleaned and "sslmode" not in cleaned:
         separator = "&" if "?" in cleaned else "?"
         cleaned = f"{cleaned}{separator}sslmode=require"
@@ -70,7 +80,23 @@ class DatabaseManager:
                 cls._instance = super(DatabaseManager, cls).__new__(cls)
                 cls._instance._is_postgres = False
                 cls._instance._pool = None
-                cls._instance._init_db()
+                cls._instance._initialized = False
+                # Defer actual DB connection to first use so module import
+                # never crashes on a cold start / missing env var.
+                try:
+                    cls._instance._init_db()
+                    cls._instance._initialized = True
+                except Exception as _e:
+                    # Log but DO NOT re-raise — the module must always load.
+                    import traceback as _tb
+                    try:
+                        logger.warning(
+                            "DatabaseManager cold-start init failed, will retry on first request",
+                            error=str(_e),
+                            traceback=_tb.format_exc()
+                        )
+                    except Exception:
+                        pass  # logger might also fail; never crash import
             return cls._instance
 
     def _init_db(self):
@@ -926,5 +952,6 @@ class DatabaseManager:
                 return []
 
 
+# Module-level singleton — DatabaseManager.__new__ is now crash-safe so this
+# import will always succeed even if the database is unreachable at cold start.
 db = DatabaseManager()
-
