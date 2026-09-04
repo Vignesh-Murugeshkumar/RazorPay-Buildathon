@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tests.generate_dataset import generate_benchmark_dataset
 from app.graphs.dispute_graph import execute_dispute_workflow
-from app.ledger.audit_chain import ledger
+from app.services.ledger import ledger
 
 
 def run_benchmark():

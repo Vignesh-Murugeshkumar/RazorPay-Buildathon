@@ -1,6 +1,6 @@
 import datetime
 from typing import TypedDict, Optional, Dict, Any, List
-from app.models.dispute import (
+from app.schemas.dispute import (
     DisputePayload,
     RuleEvaluationResult,
     Dossier
@@ -10,8 +10,8 @@ from app.rules.service_disputes import evaluate_service_dispute_compliance
 from app.services.expected_value import calculate_expected_value, ExpectedValueResult
 from app.services.rag_rebuttal import rag_synthesizer
 from app.services.issuer_intelligence import issuer_intelligence
-from app.ledger.audit_chain import ledger
-from app.security import compute_sha256_hash
+from app.services.ledger import ledger
+from app.core.security import compute_sha256_hash
 
 try:
     from langgraph.graph import StateGraph, END

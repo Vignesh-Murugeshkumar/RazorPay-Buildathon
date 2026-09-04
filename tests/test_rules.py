@@ -1,5 +1,5 @@
 import pytest
-from app.models.dispute import (
+from app.schemas.dispute import (
     DisputePayload,
     CustomerTelemetry,
     CarrierProof,
@@ -11,7 +11,7 @@ from app.rules.card_rules import (
     calculate_confidence_score,
     evaluate_dispute_compliance
 )
-from app.ledger.audit_chain import AuditLedger
+from app.services.ledger import AuditLedger
 
 
 def create_sample_payload(network="visa", reason_code="10.4", days1=150, days2=250, match_ip=True, match_device=True, carrier_deliv=True, gps=True):

@@ -15,7 +15,19 @@ router = APIRouter(prefix="", tags=["Webhooks"])
 logger = get_logger("webhook_ingress")
 
 # In-memory fast cache populated lazily or on demand (avoids blocking DB call at import)
-dossiers_db: Dict[str, Dossier] = {}
+_dossiers_cache: Dict[str, Dossier] = {}
+
+
+def get_dossiers_db() -> Dict[str, Dossier]:
+    """
+    Lazy getter for the in-memory dossiers cache.
+    Prevents cold-start database connection hangs during module import.
+    """
+    return _dossiers_cache
+
+
+# Backward compatibility reference
+dossiers_db = _dossiers_cache
 
 
 @router.post("/webhooks/razorpay", status_code=status.HTTP_200_OK)
@@ -143,7 +155,7 @@ async def handle_razorpay_dispute_webhook(
 
     # 6. Execute LangGraph Deterministic State Machine Workflow
     dossier = execute_dispute_workflow(dispute_payload)
-    dossiers_db[dossier.dispute_id] = dossier
+    get_dossiers_db()[dossier.dispute_id] = dossier
     db.save_dossier(dossier, dispute_payload)
 
     return {

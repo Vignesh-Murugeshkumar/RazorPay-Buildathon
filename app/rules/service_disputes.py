@@ -1,7 +1,7 @@
 from typing import List, Dict, Tuple, Any, Optional
 from pydantic import BaseModel, Field
 
-from app.models.dispute import (
+from app.schemas.dispute import (
     DisputePayload,
     RuleEvaluationResult
 )
