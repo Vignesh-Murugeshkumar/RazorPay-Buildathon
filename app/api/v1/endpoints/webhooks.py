@@ -14,8 +14,8 @@ from app.services.ledger import ledger
 router = APIRouter(prefix="", tags=["Webhooks"])
 logger = get_logger("webhook_ingress")
 
-# In-memory fast cache synced with persistent database
-dossiers_db: Dict[str, Dossier] = db.get_all_dossiers()
+# In-memory fast cache populated lazily or on demand (avoids blocking DB call at import)
+dossiers_db: Dict[str, Dossier] = {}
 
 
 @router.post("/webhooks/razorpay", status_code=status.HTTP_200_OK)
