@@ -84,14 +84,19 @@ class AuditLedger:
                 from app.core.db import db
                 persisted_blocks = db.load_all_ledger_blocks()
                 if persisted_blocks:
-                    if persisted_blocks[0].index == 0:
+                    # Validate mathematical continuity of persisted chain
+                    is_chain_intact = (
+                        persisted_blocks[0].index == 0
+                        and all(
+                            persisted_blocks[i].index == i and persisted_blocks[i].previous_hash == persisted_blocks[i-1].block_hash
+                            for i in range(1, len(persisted_blocks))
+                        )
+                    )
+                    if is_chain_intact:
                         self.chain = persisted_blocks
                     else:
-                        if not self.chain or self.chain[0].index != 0:
-                            self._init_genesis_block(self._genesis_seed, save_to_db=True)
-                        else:
-                            db.save_ledger_block(self.chain[0], {"genesis_seed": self._genesis_seed})
-                        self.chain = [self.chain[0]] + [b for b in persisted_blocks if b.index > 0]
+                        # Re-initialize clean genesis block if persisted chain is fragmented or discontinuous
+                        self._init_genesis_block(self._genesis_seed, save_to_db=True)
                 elif self.chain:
                     db.save_ledger_block(self.chain[0], {"genesis_seed": self._genesis_seed})
             except Exception:

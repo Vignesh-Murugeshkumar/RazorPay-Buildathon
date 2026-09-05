@@ -1350,7 +1350,16 @@ async function runSimulation(type) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
-        if (!res.ok) throw new Error('Simulation failed');
+        if (!res.ok) {
+            let errorDetail = '';
+            try {
+                const errJson = await res.json();
+                errorDetail = JSON.stringify(errJson.detail || errJson);
+            } catch (_) {
+                errorDetail = await res.text();
+            }
+            throw new Error(`HTTP ${res.status}: ${errorDetail || 'Simulation failed'}`);
+        }
         const dossier = await res.json();
         
         await fetchStats();
@@ -1359,6 +1368,7 @@ async function runSimulation(type) {
 
         viewDossier(dossier.dispute_id);
     } catch (err) {
+        console.error('Simulation error:', err);
         alert('Error running simulation: ' + err.message);
     }
 }

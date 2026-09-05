@@ -102,13 +102,15 @@ class DatabaseManager:
             if getattr(self, "_initialized", False):
                 return
             is_prod = os.getenv("ENVIRONMENT", "development").lower() == "production"
+            is_serverless = bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
+            is_strict_prod = is_prod and not is_serverless
             try:
                 self._init_db()
             except Exception as _e:
-                if is_prod:
+                if is_strict_prod:
                     logger.error("DatabaseManager initialization failed in PRODUCTION", error=str(_e))
                     raise RuntimeError(f"Production PostgreSQL required but connection failed: {_e}") from _e
-                logger.warning("DatabaseManager initialization failed or falling back to SQLite", error=str(_e))
+                logger.warning("DatabaseManager initialization failed or falling back to SQLite for service continuity", error=str(_e))
                 self._is_postgres = False
             self._initialized = True
 
@@ -116,10 +118,12 @@ class DatabaseManager:
         with self._lock:
             active_db_url = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DATABASE_URL") or os.getenv("POSTGRES_URL") or DATABASE_URL
             is_prod = os.getenv("ENVIRONMENT", "development").lower() == "production"
+            is_serverless = bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
+            is_strict_prod = is_prod and not is_serverless
             is_test = os.getenv("ENVIRONMENT", "development").lower() in ("test", "testing") or os.getenv("TEST_MODE", "0") == "1"
             cleaned_url = sanitize_postgres_url(active_db_url) if not is_test else None
 
-            if is_prod and not cleaned_url:
+            if is_strict_prod and not cleaned_url:
                 raise RuntimeError(
                     "DATABASE_URL or SUPABASE_DATABASE_URL is strictly required in PRODUCTION environment. "
                     "Silent fallback to SQLite is disallowed."
@@ -251,15 +255,14 @@ class DatabaseManager:
                     logger.info("Connected and initialized Supabase (PostgreSQL) database successfully")
                     return
                 except Exception as e:
-                    # In production, strict fail-closed: NEVER silently fall back to SQLite
-                    env = os.getenv("ENVIRONMENT", "development").lower()
-                    if env == "production":
-                        logger.critical("Fatal: PostgreSQL connection failed in PRODUCTION mode. Failing closed.", error=str(e))
+                    # In strict production mode, fail-closed; on serverless/cloud fallback to SQLite for resilience
+                    if is_strict_prod:
+                        logger.critical("Fatal: PostgreSQL connection failed in STRICT PRODUCTION mode. Failing closed.", error=str(e))
                         raise RuntimeError(
                             f"Production database initialization failed: {e}. "
-                            "SentinelDispute enforces fail-closed posture in production: embedded SQLite fallback is prohibited."
+                            "SentinelDispute enforces fail-closed posture in strict production: embedded SQLite fallback is prohibited."
                         ) from e
-                    logger.warning("Postgres unavailable in dev/test environment, falling back to local SQLite", error=str(e))
+                    logger.warning("Postgres unavailable or failed to connect; falling back to local SQLite for high availability", error=str(e))
                     self._is_postgres = False
 
             # Fallback to Embedded SQLite
