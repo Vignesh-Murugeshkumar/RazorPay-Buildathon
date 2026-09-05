@@ -271,7 +271,9 @@ class OpenAIProvider(AIProvider):
 
 def get_ai_provider() -> AIProvider:
     """Factory returning configured AIProvider instance."""
-    provider_name = os.getenv("AI_PROVIDER", "mock").lower().strip()
-    if provider_name in ("openai", "gpt"):
+    provider_name = os.getenv("AI_PROVIDER", "").lower().strip()
+    has_key = bool(os.getenv("OPENAI_API_KEY") and len(os.getenv("OPENAI_API_KEY", "").strip()) > 10)
+    if provider_name in ("openai", "gpt") or (has_key and provider_name != "mock"):
         return OpenAIProvider()
     return MockAIProvider()
+
