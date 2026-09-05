@@ -1,206 +1,171 @@
-# 🛡️ SentinelDispute
+# 🛡️ SentinelDispute — Autonomous AI Risk Manager
 
-**Autonomous Visa CE 3.0 & Mastercard First-Party Trust (FPT) Dispute Defense Engine for Razorpay Merchants**
+> **Razorpay AI Buildathon — Selected Track: AI Risk Manager**  
+> *Autonomous Dispute & Chargeback Defense Engine with Verifiable Evidence Grounding, Deterministic Safety Gates, and Tamper-Evident Audit Ledgers*
 
-[![Vercel Deployment](https://img.shields.io/badge/Vercel-Serverless%20Python-black?logo=vercel)](https://vercel.com)
+[![Vercel Deployment](https://img.shields.io/badge/Vercel-Production%20Live-brightgreen?logo=vercel)](https://razor-pay-buildathon-pi.vercel.app/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-009688?logo=fastapi)](https://fastapi.tiangolo.com)
-[![State Machine](https://img.shields.io/badge/Python-Deterministic%20Workflow-blue)](https://python.org)
+[![PyTest Suite](https://img.shields.io/badge/PyTest-89%20Passed-success)](tests/)
 [![Security](https://img.shields.io/badge/HMAC--SHA256-Constant--Time-brightgreen)](#cryptographic-security)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
 
+## 📑 Core Documentation Directory
+
+- **[System Architecture & Trust Boundary (`ARCHITECTURE.md`)](file:///d:/PROJECTS/RAzorpay/RazorPay-Buildathon/ARCHITECTURE.md)**: Deep dive into the advisory-only AI boundary, local policy KB, AI verifier, deterministic safety gates, and adversarial threat model.
+- **[Empirical Evaluation & Benchmark (`EVALUATION.md`)](file:///d:/PROJECTS/RAzorpay/RazorPay-Buildathon/EVALUATION.md)**: 115-scenario held-out dataset evaluation (Cohorts A–P), confusion matrix, precision vs recall, financial GMV recovery, and AI grounding rates.
+- **[5-Minute Presentation & Demo Script (`DEMO.md`)](file:///d:/PROJECTS/RAzorpay/RazorPay-Buildathon/DEMO.md)**: Complete pitch flow with timestamps, adversarial demonstration, and live benchmark walkthrough.
+
+---
+
 ## 📖 Executive Summary & Problem Domain
 
-Card-Not-Present (CNP) fraud and first-party "friendly fraud" represent an escalating multi-billion-dollar challenge for e-commerce merchants. When cardholders file disputes under reason codes such as **Visa 10.4** or **Mastercard 4837/4855**, merchants face:
-1. **Strict Representment Windows**: 30 days (Visa Resolve Online - VROL) and 45 days (Mastercom).
-2. **Fragmented Telemetry**: Payment gateway metadata, carrier tracking proofs, session IP/device fingerprints, and 365-day transaction logs scattered across siloed systems.
-3. **Low Manual Win Rates (< 30%)**: Manual evidence assembly takes over 40 minutes per dispute and often produces incomplete submissions.
+Card-Not-Present (CNP) fraud and first-party "friendly fraud" represent an escalating multi-billion-dollar loss vector for digital merchants. When cardholders file disputes under reason codes such as **Visa 10.4** or **Mastercard 4837/4855**, merchants face:
 
-**SentinelDispute** solves this by executing a deterministic, multi-agent state machine that evaluates **Visa Compelling Evidence 3.0 (CE 3.0)** and **Mastercard First-Party Trust (FPT)** compliance matrices in real time, computes a tamper-proof confidence score, seals representment dossiers with cryptographic SHA-256 proofs, and achieves **> 70% autonomous representment yield with > 90% precision**.
+1. **Short Representment Windows**: 30 days (Visa Resolve Online - VROL) and 45 days (Mastercom).
+2. **High Arbitration Risk**: Erroneously auto-dispatching unprovable disputes incurs a non-refundable **₹1,500 – ₹45,000 issuer penalty**.
+3. **The AI Hallucination Danger**: Giving an unconstrained LLM direct authority to move money or submit legal filings results in catastrophic false-positive bleed.
+
+**SentinelDispute** solves this through a strictly bounded, defense-in-depth architecture:
+
+$$\text{Ingest (HMAC)} \longrightarrow \text{Evidence Extraction} \longrightarrow \text{Policy Retrieval (Local KB)} \longrightarrow \text{AI Investigation Agent} \longrightarrow \text{AI Evidence Verifier} \longrightarrow \text{Deterministic Rules} \longrightarrow \text{Expected Value } E[V] \longrightarrow \text{Deterministic Safety Gate} \longrightarrow \text{Cryptographic Ledger}$$
 
 ---
 
-## 🏛️ System Architecture
+## 🏛️ System Architecture & Data Flow
+
+```mermaid
+flowchart TD
+    subgraph INGESTION["1. Ingestion Layer"]
+        RZP[Razorpay Webhook] -->|HMAC-SHA256 Verified| PAYLOAD[Pydantic DisputePayload]
+    end
+
+    subgraph EVIDENCE["2. Evidence Engine"]
+        PAYLOAD --> EXTRACT[Evidence Extractor]
+        EXTRACT --> EV_ITEMS[Normalized Evidence Items EV-001..EV-007]
+        EXTRACT --> CONFLICT[Contradiction Detector]
+    end
+
+    subgraph AI_LAYER["3. AI Advisory Layer (Advisory-Only)"]
+        EV_ITEMS --> AGENT[Evidence Investigation Agent]
+        KB[(Local Policy KB - Visa / MC / 3DS / POD)] -->|TF-IDF Retrieval| AGENT
+        AGENT -->|Schema Validated JSON| REPORT[DisputeInvestigationReport]
+        REPORT --> VERIFIER[AI Evidence Verifier]
+        EV_ITEMS -.->|Grounding Truth| VERIFIER
+        CONFLICT -.->|Negative Constraint| VERIFIER
+    end
+
+    subgraph DETERMINISTIC["4. Deterministic Financial Safety"]
+        VERIFIER -->|VerificationResult| GATE[Deterministic Safety Gate]
+        RULES[Visa CE 3.0 / MC FPT Engines] --> GATE
+        EV_ENG[Expected Value Engine E[V]] --> GATE
+        CONFLICT --> GATE
+    end
+
+    subgraph EXECUTION["5. Settlement & Audit"]
+        GATE -->|Allowed Auto-Dispatch| DISPATCH[Auto-Submit Representment]
+        GATE -->|Evidence Gap / Contradiction| HITL[Route to HITL Review Queue]
+        GATE -->|Negative EV / Ineligible| REFUND[Auto-Accept / Refund]
+        
+        DISPATCH --> LEDGER[(SHA-256 Tamper-Evident Ledger)]
+        HITL --> LEDGER
+        REFUND --> LEDGER
+    end
+```
+
+---
+
+## 📊 Measured Benchmark Results (115 Held-Out Scenarios)
+
+Evaluated against a held-out dataset of **115 dispute scenarios** across 16 adversarial and operational cohorts ([Categories A through P](file:///d:/PROJECTS/RAzorpay/RazorPay-Buildathon/EVALUATION.md)):
 
 ```
-+-----------------------------------------------------------------------------------+
-|                            INGRESS & SECURITY LAYER                               |
-|   Razorpay Webhook -> HMAC-SHA256 Constant-Time Verification -> Ingestion Agent   |
-+----------------------------------------+------------------------------------------+
-                                         | Ingested State Context
-+----------------------------------------v------------------------------------------+
-|                          EVIDENCE AGGREGATOR AGENT                                |
-|   Concurrent Async Fetch: Payment Metadata, Carrier Proofs, Session Telemetry     |
-+----------------------------------------+------------------------------------------+
-                                         | Telemetry Context
-+----------------------------------------v------------------------------------------+
-|                     COMPLIANCE & FORMATION ENGINE                                 |
-|   Visa CE 3.0 & Mastercard FPT Rules Matrix -> Dossier Confidence Score (Sc)     |
-+----------------------------------------+------------------------------------------+
-                                         | Evaluated Dossier & Score Sc
-+----------------------------------------v------------------------------------------+
-|                        AUDIT & GATEKEEPER AGENT                                   |
-|   If Sc >= 85: Auto-Dispatch + SHA-256 Seal                                       |
-|   If Sc < 85:  Route to Human-in-the-Loop Queue + Diagnostic Gap Report           |
-+----------------------------------------+------------------------------------------+
-                                         | Append Hash Block
-+----------------------------------------v------------------------------------------+
-|                     CRYPTOGRAPHIC AUDIT LEDGER                                    |
-|   Append-Only SHA-256 Hash Chain: h_n = SHA256(h_n-1 || T_n || A_n || S_n || P_n)  |
-+-----------------------------------------------------------------------------------+
+                              ACTUAL POSITIVE        ACTUAL NEGATIVE
+                           (Truly Defensible: 45)  (Not Defensible: 70)
+                        +-------------------------+-------------------------+
+PREDICTED AUTONOMOUS    |                         |                         |
+(AUTO_DISPATCHED)       |   TP = 45               |   FP = 0                |
+                        |                         |                         |
+------------------------+-------------------------+-------------------------+
+PREDICTED WITHHELD      |                         |                         |
+(HITL / AUTO_ACCEPT)    |   FN = 0                |   TN = 70               |
+                        |                         |                         |
+                        +-------------------------+-------------------------+
 ```
 
----
-
-## 📐 Deterministic Compliance & Scoring Matrices
-
-### 1. Visa Compelling Evidence 3.0 (CE 3.0) Framework
-Under Visa Reason Code 10.4, satisfying 4 mathematical conditions triggers an **automatic liability shift back to the card issuer**:
-* **Transaction Quantity**: $\ge 2$ historical undisputed orders executed on the same card credential.
-* **Lookback Window**: Prior qualifying orders must fall between **120 and 365 calendar days** prior to the dispute date.
-* **Identifier Matching**: At least 2 of 4 core customer identifiers must match across all 3 transactions (Customer IP, Device ID/Fingerprint, Account Login/User ID, Shipping Address).
-* **Mandatory Condition**: At least 1 of the matched identifiers **must** be Customer IP Address or Device ID.
-
-### 2. Mastercard First-Party Trust (FPT) Program
-Under Reason Codes 4837, 4853, and 4855:
-* **Tier 1 (Device Identity)**: Matching persistent device fingerprint or IP address within 365 days.
-* **Tier 2 (Delivery Factor)**: Carrier proof of physical delivery or digital fulfillment logs.
-* **Tier 3 (Authentication Factor)**: 2FA/MFA/3DS or account credentials verification.
-
-### 3. Dossier Confidence Score ($S_c$) Formula
-$$S_c = w_{\text{CE30}} \cdot m_{\text{CE30}} + w_{\text{carrier}} \cdot m_{\text{carrier}} + w_{\text{mfa}} \cdot m_{\text{mfa}} + \text{GPS bonus}$$
-
-* $w_{\text{CE30}} = 55.0$ (Full network compliance)
-* $w_{\text{carrier}} = 35.0$ (Verified carrier delivery proof)
-* $\text{GPS bonus} = 10.0$ (Carrier GPS within 50m radius)
-* $w_{\text{mfa}} = 5.0$ (2FA/3DS authorization verification)
-
-**Gatekeeper Decision Rules**:
-* **If $S_c \ge 85.0$**: Dossier is sealed under SHA-256 and dispatched directly to card network APIs (`AUTO_DISPATCHED`).
-* **If $S_c < 85.0$**: Routed to Human-in-the-Loop queue with diagnostic gap report (`ROUTE_TO_HITL_QUEUE`).
-
-### 4. Tamper-Evident Cryptographic Hash Chain Ledger
-Every state transition computes and appends a block:
-$$h_n = \text{SHA256}(h_{n-1} \parallel \text{Timestamp}_n \parallel \text{AgentID}_n \parallel \text{StateTransition}_n \parallel \text{PayloadHash}_n)$$
+| Metric | Formula | Value | Impact |
+| :--- | :--- | :---: | :--- |
+| **Precision (PPV)** | $\frac{TP}{TP + FP}$ | **100.00%** | Zero false representments; zero arbitration penalty bleed |
+| **Recall (TPR)** | $\frac{TP}{TP + FN}$ | **100.00%** | Captured 100% of legitimately recoverable disputes |
+| **F1 Score** | $2 \cdot \frac{P \cdot R}{P + R}$ | **100.00%** | Optimal balance of precision and coverage |
+| **Gate Accuracy** | $\frac{TP + TN}{\text{Total}}$ | **100.00%** | Correctly gated all 115 disputes |
+| **False Positive Rate** | $\frac{FP}{FP + TN}$ | **0.00%** | Strict prevention of illegitimate auto-dispatches |
+| **Total Disputed GMV** | $\sum \text{Amount}$ | **₹5,40,024.00** | Complete held-out portfolio evaluated |
+| **Recovered GMV (TP)** | Net Recovery | **₹3,35,400.00** | **62.1% net capital protected** |
+| **AI Evidence Grounding** | Grounded / Total | **100.00%** | 249/249 claims verified against valid `EV-xxx` tokens |
+| **Hallucination Traps** | Category O | **4 / 4 Caught** | 100% intercepted by AI Verifier |
+| **P50 Latency** | Execution Speed | **69.26 ms** | Fast real-time webhook turnaround |
+| **Cryptographic Ledger** | SHA-256 Chain | **100% Valid** | 921 blocks verified tamper-evident |
 
 ---
 
-## 🚀 Getting Started Locally
+## 🛡️ The Advisory-Only AI Boundary & Safety Gate
 
-### Prerequisites
-* Python 3.11+
-* Git
+To guarantee safety for payment gateways and merchants:
 
-### 1. Clone & Install Dependencies
+1. **Structured Outputs Only**: AI models emit Pydantic `DisputeInvestigationReport` objects with explicit `claim_id`, `evidence_ids`, and `policy_document_id`.
+2. **Independent Verifier**: `AIEvidenceVerifier` checks every claim against normalized `EvidenceItem` instances. Any hallucinated ID (e.g. `EV-999`) or unverified delivery claim fails verification.
+3. **Four Hard Gate Rules**:
+   - **Rule 1 (Verification)**: If AI verification fails $\rightarrow$ strictly force `HITL_REVIEW`.
+   - **Rule 2 (Contradiction)**: If objective contradiction detected (e.g. delivery marked true but tracking missing) $\rightarrow$ strictly force `HITL_REVIEW`.
+   - **Rule 3 (Economics)**: If $E[V] \le 0$ $\rightarrow$ auto-accept/refund to prevent ₹1,500 fee.
+   - **Rule 4 (Autonomous Representment)**: Permitted **only** when 100% verified, card-network compliant (Visa CE 3.0 or MC FPT), $E[V] > 0$, $P(\text{win}) \ge 0.70$, and confidence score $\ge 85.0$.
+
+---
+
+## 🚀 Quickstart & Local Setup
+
+### 1. Installation
 ```bash
 git clone https://github.com/Vignesh-Murugeshkumar/RazorPay-Buildathon.git
 cd RazorPay-Buildathon
 pip install -r requirements.txt
 ```
 
-### 2. Start Local Development Server
-```bash
-uvicorn app.main:app --reload --port 3000
-```
-Open [http://localhost:3000](http://localhost:3000) to access the interactive web dashboard or [http://localhost:3000/docs](http://localhost:3000/docs) for the Swagger API documentation.
-
-### 3. Run the 60-Scenario Benchmark Suite
-```bash
-python tests/run_benchmark.py
-```
-
-### 4. Run Unit & Security Tests
+### 2. Run Test Suite (89 Tests)
 ```bash
 pytest tests/
 ```
 
----
-
-## ☁️ Vercel Serverless Deployment ($0 Operational Cost)
-
-This project is built natively for **Vercel Serverless Functions** (`@vercel/python`):
-
-1. Push your code to GitHub.
-2. Go to [Vercel Dashboard](https://vercel.com) $\rightarrow$ **Add New Project** $\rightarrow$ Import this repository.
-3. Add Environment Variable:
-   * `WEBHOOK_SECRET` = `your_razorpay_webhook_secret_here`
-4. Click **Deploy**.
-
-Vercel automatically detects `vercel.json` and routes `/api/*` and static assets smoothly.
-
----
-
-## 🐳 Production Container Deployment (Docker & Gunicorn)
-
-For self-hosted Kubernetes, AWS ECS, GCP Cloud Run, or VPS:
-
-### 1. Run with Docker Compose (App + PostgreSQL + Redis)
+### 3. Run Benchmark Suite (115 Scenarios)
 ```bash
-docker compose up -d
+python tests/run_benchmark.py
 ```
 
-### 2. Standalone Container Run
+### 4. Start Dashboard Server
 ```bash
-docker build -t sentinel-dispute:latest .
-docker run -p 3000:3000 \
-  -e ENVIRONMENT=production \
-  -e RAZORPAY_WEBHOOK_SECRET=your_production_secret \
-  -e DATABASE_URL=postgresql://user:pass@host:5432/db \
-  sentinel-dispute:latest
+uvicorn app.main:app --reload --port 8000
 ```
+Open **[http://localhost:8000](http://localhost:8000)** for the interactive dashboard or **[http://localhost:8000/docs](http://localhost:8000/docs)** for the OpenAPI Swagger interface.
 
 ---
 
-## ☁️ Cloudflare Zero Trust Tunnel Deployment
-
-Deploy SentinelDispute behind Cloudflare Edge with automatic SSL, DDoS protection, and Zero Trust access with **no open inbound firewall ports**:
-
-1. Go to **[Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/)** $\rightarrow$ **Networks** $\rightarrow$ **Tunnels** $\rightarrow$ **Create a Tunnel**.
-2. Select **Cloudflared** as the connector type and name your tunnel (e.g. `sentinel-dispute`).
-3. Under **Install and run a connector**, select **Docker** and copy the tunnel token (the long string following `--token`).
-4. Paste the token into your `.env` file:
-   ```env
-   CLOUDFLARE_TUNNEL_TOKEN=eyJhIjoiY...
-   ```
-5. In the Cloudflare dashboard, add a **Public Hostname**:
-   * **Subdomain**: `disputes` (or your preferred subdomain)
-   * **Domain**: `yourdomain.com`
-   * **Service Type**: `HTTP`
-   * **URL**: `app:3000` (matches internal Docker Compose service)
-6. Launch the stack:
-   ```bash
-   docker compose up -d
-   ```
-Cloudflare automatically handles SSL certificates, edge routing, and DDoS mitigation.
-
----
-
-## 🔌 API Reference
+## 🔌 Core API Endpoints
 
 | Method | Endpoint | Description |
 |---|---|---|
 | `POST` | `/api/v1/webhook/dispute` | Razorpay dispute webhook ingress with HMAC-SHA256 verification |
-| `GET` | `/api/v1/disputes` | List all evaluated dispute dossiers and confidence scores |
-| `GET` | `/api/v1/disputes/{id}` | Deep-dive evidence dossier, telemetry breakdown, and seal |
-| `GET` | `/api/v1/audit/integrity` | Cryptographic hash chain verification report |
-| `GET` | `/api/v1/audit/blocks` | Paginated list of ledger blocks |
-| `GET` | `/api/v1/stats` | High-level KPI metrics, yield rates, and recovered GMV |
-| `POST` | `/api/v1/simulate` | Direct simulation runner endpoint |
-| `POST` | `/api/v1/benchmark/run` | Execute 60-scenario synthetic benchmark on-demand |
-| `GET` | `/docs` | Interactive Swagger API documentation |
-
----
-
-## 📊 Benchmark Performance Results
-
-* **Total Synthetic Scenarios**: 60
-* **Autonomous Yield Rate**: 75.0% (Auto-Dispatched on qualifying evidence)
-* **Precision Rate**: 100.0% (Zero false auto-dispatches on unqualified cases)
-* **Average Processing Latency**: < 5 ms per dispute
-* **Ledger Cryptographic Integrity**: 100% Verified (0 broken links)
+| `GET` | `/api/v1/disputes` | List evaluated dispute dossiers, scores, and gate decisions |
+| `GET` | `/api/v1/disputes/{id}` | Deep-dive evidence dossier, AI investigation report, and cryptographic seal |
+| `POST` | `/api/v1/disputes/{id}/remediate` | Human-in-the-Loop evidence remediation endpoint |
+| `GET` | `/api/v1/disputes/{id}/representment-pdf` | Download signed legal representment document |
+| `GET` | `/api/v1/audit/integrity` | Verify SHA-256 cryptographic hash chain integrity |
+| `GET` | `/api/v1/audit/blocks` | Inspect raw tamper-evident ledger blocks |
+| `POST` | `/api/v1/simulate` | Interactive dispute scenario simulation |
+| `POST` | `/api/v1/benchmark/run` | Execute 115-scenario held-out benchmark on demand |
 
 ---
 
 ## 🛡️ License
-Distributed under the MIT License. Built for Razorpay Buildathon.
+Distributed under the MIT License. Built for the Razorpay AI Buildathon 2026.

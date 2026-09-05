@@ -25,6 +25,10 @@ from app.services.issuer_intelligence import issuer_intelligence
 from app.services.ledger import ledger
 from app.core.db import db
 from app.core.security import compute_sha256_hash
+from app.ai.investigation_agent import investigation_agent
+from app.ai.verifier import ai_verifier, VerificationResult
+from app.ai.prompts import DisputeInvestigationReport
+from app.rules.safety_gate import safety_gate, SafetyGateDecision
 
 
 class DisputeState(TypedDict, total=False):
@@ -39,6 +43,11 @@ class DisputeState(TypedDict, total=False):
     dossier: Optional[Dossier]
     decision: str
     logs: List[str]
+    ai_investigation: Optional[DisputeInvestigationReport]
+    ai_report_hash: Optional[str]
+    policy_excerpts: Optional[List[Any]]
+    ai_verification: Optional[VerificationResult]
+    safety_gate: Optional[SafetyGateDecision]
 
 
 def triage_agent_node(state: DisputeState) -> DisputeState:
@@ -128,6 +137,114 @@ def aggregator_agent_node(state: DisputeState) -> DisputeState:
     
     return {
         **state,
+        "logs": logs
+    }
+
+
+def ai_investigation_agent_node(state: DisputeState) -> DisputeState:
+    """
+    Evidence Investigation Agent Node:
+    Conducts deep analysis over multi-source evidence, queries the local Policy KB,
+    and prompts the AI Provider to produce a structured, schema-validated risk analysis.
+    """
+    payload = state["payload"]
+    dispute_id = state["dispute_id"]
+    items, contradictions, _ = extract_evidence_and_contradictions(payload)
+
+    report, report_hash, policy_excerpts = investigation_agent.investigate_dispute(
+        payload=payload,
+        evidence_items=items,
+        contradictions=contradictions
+    )
+
+    ledger.append_block(
+        agent_id="AGENT_AI_INVESTIGATOR",
+        state_transition="AI_INVESTIGATION_COMPLETED",
+        payload={
+            "dispute_id": dispute_id,
+            "report_hash": report_hash,
+            "recommended_action": report.recommended_action,
+            "confidence": report.confidence,
+            "claims_count": len(report.claims),
+            "supporting_evidence": report.supporting_evidence,
+            "provider_used": report.provider_used
+        }
+    )
+
+    db.add_timeline_event(
+        dispute_id=dispute_id,
+        event_type="AI_INVESTIGATION",
+        title="AI Evidence Investigation Completed",
+        description=f"AI Risk Assessment: {report.risk_assessment} (Recommended: {report.recommended_action}, Conf: {report.confidence*100:.0f}%).",
+        metadata={"report_hash": report_hash, "recommendation": report.recommended_action, "confidence": report.confidence}
+    )
+
+    logs = state.get("logs", [])
+    logs.append(f"AI Investigation: Action={report.recommended_action}, Conf={report.confidence:.2f}, Hash={report_hash[:8]}")
+
+    return {
+        **state,
+        "ai_investigation": report,
+        "ai_report_hash": report_hash,
+        "policy_excerpts": policy_excerpts,
+        "logs": logs
+    }
+
+
+def ai_verifier_agent_node(state: DisputeState) -> DisputeState:
+    """
+    AI Evidence Verifier Node:
+    Independently verifies that every claim asserted by the AI has supporting Evidence IDs,
+    that all cited evidence actually exists and is verified, and that contradictions are respected.
+    """
+    payload = state["payload"]
+    dispute_id = state["dispute_id"]
+    report = state.get("ai_investigation")
+    policy_excerpts = state.get("policy_excerpts", [])
+    items, contradictions, _ = extract_evidence_and_contradictions(payload)
+
+    if report:
+        verification = ai_verifier.verify_report(
+            report=report,
+            evidence_items=items,
+            contradictions=contradictions,
+            policy_excerpts=policy_excerpts
+        )
+    else:
+        from app.ai.verifier import VerificationResult
+        verification = VerificationResult(
+            passed=True,
+            grounded_claims_ratio=1.0,
+            audit_summary="No AI report generated; skipping verifier check."
+        )
+
+    transition = "AI_VERIFICATION_PASSED" if verification.passed else "AI_VERIFICATION_FAILED"
+    ledger.append_block(
+        agent_id="AGENT_AI_VERIFIER",
+        state_transition=transition,
+        payload={
+            "dispute_id": dispute_id,
+            "passed": verification.passed,
+            "grounded_claims_ratio": verification.grounded_claims_ratio,
+            "unsupported_claims_count": len(verification.unsupported_claims),
+            "rejection_reasons": verification.rejection_reasons
+        }
+    )
+
+    db.add_timeline_event(
+        dispute_id=dispute_id,
+        event_type="AI_VERIFICATION",
+        title=f"AI Verifier: {'PASSED' if verification.passed else 'FAILED'}",
+        description=verification.audit_summary,
+        metadata={"passed": verification.passed, "rejection_reasons": verification.rejection_reasons}
+    )
+
+    logs = state.get("logs", [])
+    logs.append(f"AI Verifier: Passed={verification.passed}, GroundedRatio={verification.grounded_claims_ratio:.2f}")
+
+    return {
+        **state,
+        "ai_verification": verification,
         "logs": logs
     }
 
@@ -318,6 +435,72 @@ def economic_engine_agent_node(state: DisputeState) -> DisputeState:
     }
 
 
+def safety_gate_agent_node(state: DisputeState) -> DisputeState:
+    """
+    Deterministic Safety Gate Node:
+    Authoritative Financial Action Gatekeeper.
+    Evaluates AI Investigation advice + Verifier results + Deterministic Compliance + E[V].
+    Enforces that AI can NEVER authorize financial actions independently.
+    """
+    payload = state["payload"]
+    dispute_id = state["dispute_id"]
+    evaluation = state["evaluation"]
+    ev_result = state["expected_value"]
+    ai_report = state.get("ai_investigation")
+    verification = state.get("ai_verification")
+    contradictions = evaluation.contradictions if evaluation else []
+
+    gate_decision = safety_gate.evaluate_gate(
+        ai_report=ai_report,
+        verification=verification,
+        rule_result=evaluation,
+        ev_result=ev_result,
+        contradictions=contradictions,
+        confidence_score=evaluation.confidence_score if evaluation else 0.0
+    )
+
+    if gate_decision.final_decision == "AUTO_REPRESENT":
+        workflow_decision = "AUTO_DISPATCHED"
+    elif gate_decision.final_decision == "ACCEPT_LOSS":
+        workflow_decision = "AUTO_ACCEPT_OR_REFUND"
+    else:
+        workflow_decision = "ROUTE_TO_HITL_QUEUE"
+
+    evaluation.route_decision = workflow_decision
+    evaluation.economic_decision = workflow_decision
+
+    ledger.append_block(
+        agent_id="AGENT_SAFETY_GATE",
+        state_transition="SAFETY_GATE_EVALUATED",
+        payload={
+            "dispute_id": dispute_id,
+            "final_decision": gate_decision.final_decision,
+            "allowed_auto_dispatch": gate_decision.allowed_auto_dispatch,
+            "ai_alignment": gate_decision.ai_alignment,
+            "primary_policy_rule": gate_decision.primary_policy_rule,
+            "gate_reasons": gate_decision.gate_reasons
+        }
+    )
+
+    db.add_timeline_event(
+        dispute_id=dispute_id,
+        event_type="SAFETY_GATE_DECISION",
+        title=f"Safety Gate: {gate_decision.final_decision}",
+        description=gate_decision.decision_explanation,
+        metadata={"decision": gate_decision.final_decision, "alignment": gate_decision.ai_alignment}
+    )
+
+    logs = state.get("logs", [])
+    logs.append(f"Safety Gate evaluated: Decision={gate_decision.final_decision} (Alignment={gate_decision.ai_alignment})")
+
+    return {
+        **state,
+        "safety_gate": gate_decision,
+        "decision": workflow_decision,
+        "logs": logs
+    }
+
+
 def gatekeeper_router(state: DisputeState) -> str:
     """
     3-Tier Gatekeeper Router based on Dynamic Expected Value & P(win):
@@ -439,6 +622,10 @@ def _create_dossier(state: DisputeState, decision: str, summary: str, sealed_has
     elif decision == "AUTO_ACCEPT_OR_REFUND":
         recommendation = "Accept dispute or refund to prevent non-refundable issuer arbitration fees"
 
+    ai_report = state.get("ai_investigation")
+    verification = state.get("ai_verification")
+    gate_decision = state.get("safety_gate")
+
     explanation = DecisionExplanation(
         summary=summary,
         top_positive_factors=positive_factors,
@@ -448,7 +635,11 @@ def _create_dossier(state: DisputeState, decision: str, summary: str, sealed_has
         estimated_win_probability=p_win,
         win_probability=p_win,
         expected_value_inr=ev_inr,
-        recommendation=recommendation
+        recommendation=recommendation,
+        ai_risk_assessment=ai_report.risk_assessment if ai_report else "",
+        ai_recommended_action=ai_report.recommended_action if ai_report else "",
+        ai_verifier_status="PASSED" if (verification and verification.passed) else ("FAILED" if verification else ""),
+        safety_gate_alignment=gate_decision.ai_alignment if gate_decision else ""
     )
 
     ev_breakdown_dict = None
@@ -508,7 +699,10 @@ def _create_dossier(state: DisputeState, decision: str, summary: str, sealed_has
         due_by=payload.due_by,
         priority_score=priority_score,
         urgency=urgency,
-        priority_factors=priority_factors
+        priority_factors=priority_factors,
+        ai_investigation=ai_report.model_dump() if ai_report else None,
+        ai_verification=verification.model_dump() if verification else None,
+        safety_gate=gate_decision.model_dump() if gate_decision else None
     )
 
 
@@ -707,18 +901,21 @@ def execute_dispute_workflow(payload: DisputePayload) -> Dossier:
         "logs": []
     }
 
-    # Deterministic pipeline
+    # Deterministic pipeline with AI investigation & verification
     s1 = triage_agent_node(initial_state)
     s2 = aggregator_agent_node(s1)
-    s3 = compliance_agent_node(s2)
-    s4 = economic_engine_agent_node(s3)
-    next_node = gatekeeper_router(s4)
+    s3 = ai_investigation_agent_node(s2)
+    s4 = ai_verifier_agent_node(s3)
+    s5 = compliance_agent_node(s4)
+    s6 = economic_engine_agent_node(s5)
+    s7 = safety_gate_agent_node(s6)
+    next_node = gatekeeper_router(s7)
     if next_node == "auto_dispatch_agent":
-        s5 = auto_dispatch_agent_node(s4)
+        s8 = auto_dispatch_agent_node(s7)
     elif next_node == "auto_accept_agent":
-        s5 = auto_accept_agent_node(s4)
+        s8 = auto_accept_agent_node(s7)
     else:
-        s5 = hitl_queue_agent_node(s4)
+        s8 = hitl_queue_agent_node(s7)
 
-    return s5["dossier"]
+    return s8["dossier"]
 

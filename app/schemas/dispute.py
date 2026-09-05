@@ -185,6 +185,10 @@ class DecisionExplanation(BaseModel):
     win_probability: float = 0.0  # deprecated alias
     expected_value_inr: float = 0.0
     recommendation: str = ""
+    ai_risk_assessment: str = ""
+    ai_recommended_action: str = ""
+    ai_verifier_status: str = ""
+    safety_gate_alignment: str = ""
 
 
 class Dossier(BaseModel):
@@ -228,13 +232,16 @@ class Dossier(BaseModel):
     customer_history_summary: Optional[Dict[str, Any]] = None
     digital_access_logs: Optional[Dict[str, Any]] = None
 
-    # Explainable AI & HITL Assignment
+    # Explainable AI, Verifier & Safety Gate
     decision_explanation: Optional[DecisionExplanation] = None
     assigned_to: Optional[str] = None
     due_by: Optional[int] = None
     priority_score: float = 0.0
     urgency: str = "normal"  # critical | urgent | normal
     priority_factors: Dict[str, float] = Field(default_factory=dict)
+    ai_investigation: Optional[Dict[str, Any]] = None
+    ai_verification: Optional[Dict[str, Any]] = None
+    safety_gate: Optional[Dict[str, Any]] = None
 
 
 class DisputeSummary(BaseModel):

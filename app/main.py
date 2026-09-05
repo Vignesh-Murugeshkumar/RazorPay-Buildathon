@@ -366,51 +366,29 @@ async def simulate_dispute(payload: RazorpayDisputeWebhook):
 
 @app.post("/api/v1/benchmark/run", tags=["Simulation"])
 async def trigger_benchmark_run():
-    """Runs 60-scenario synthetic benchmark dataset on demand."""
-    from tests.generate_dataset import generate_benchmark_dataset
+    """Runs rigorous 115-scenario held-out benchmark evaluation dataset across categories A-P."""
+    from tests.run_benchmark import run_benchmark
     
-    scenarios = generate_benchmark_dataset()
-    start_time = time.time()
-    
-    results = []
-    for sc in scenarios:
-        t0 = time.time()
-        dossier = execute_dispute_workflow(sc["payload"])
-        latency_ms = round((time.time() - t0) * 1000, 2)
-        # Persist benchmark dossier to DB so results survive cold starts
-        dossiers_db[dossier.dispute_id] = dossier
-        db.save_dossier(dossier, sc["payload"])
-
-        is_expected = (dossier.decision == sc["expected_decision"])
-        results.append({
-            "dispute_id": dossier.dispute_id,
-            "scenario_type": sc["category"],
-            "card_network": sc["payload"].card_network,
-            "confidence_score": dossier.confidence_score,
-            "decision": dossier.decision,
-            "expected_decision": sc["expected_decision"],
-            "matched_expectation": is_expected,
-            "latency_ms": latency_ms
-        })
-        
-    total_elapsed = round(time.time() - start_time, 2)
-    total_scenarios = len(results)
-    correct = sum(1 for r in results if r["matched_expectation"])
-    auto_count = sum(1 for r in results if r["decision"] == "AUTO_DISPATCHED")
-    
-    precision = (correct / total_scenarios) * 100.0
-    yield_rate = (auto_count / total_scenarios) * 100.0
-    avg_latency = round(sum(r["latency_ms"] for r in results) / total_scenarios, 2)
+    benchmark_report = run_benchmark()
     
     return {
         "status": "completed",
-        "total_scenarios": total_scenarios,
-        "autonomous_yield_percentage": round(yield_rate, 2),
-        "precision_percentage": round(precision, 2),
-        "average_latency_ms": avg_latency,
-        "total_time_seconds": total_elapsed,
-        "ledger_integrity": ledger.verify_integrity().is_valid,
-        "scenario_results": results
+        "total_scenarios": benchmark_report["total_scenarios"],
+        "confusion_matrix": benchmark_report["confusion_matrix"],
+        "precision_percentage": round(benchmark_report["precision"], 2),
+        "recall_percentage": round(benchmark_report["recall"], 2),
+        "f1_score": round(benchmark_report["f1"], 2),
+        "accuracy_percentage": round(benchmark_report["accuracy"], 2),
+        "false_positive_rate": round(benchmark_report["fpr"], 2),
+        "total_disputed_gmv_inr": benchmark_report["total_disputed_gmv"],
+        "correctly_recovered_gmv_inr": benchmark_report["correctly_recovered_gmv"],
+        "false_positive_financial_cost_inr": benchmark_report["false_positive_financial_cost"],
+        "autonomous_yield_percentage": round((benchmark_report["confusion_matrix"]["tp"] + benchmark_report["confusion_matrix"]["fp"]) / benchmark_report["total_scenarios"] * 100.0, 2),
+        "hitl_rate_percentage": round(benchmark_report["hitl_rate"], 2),
+        "ai_grounding_rate": round(benchmark_report["ai_grounding_rate"], 2),
+        "p50_latency_ms": round(benchmark_report["p50_latency_ms"], 2),
+        "p95_latency_ms": round(benchmark_report["p95_latency_ms"], 2),
+        "ledger_integrity": benchmark_report["ledger_integrity"]
     }
 
 

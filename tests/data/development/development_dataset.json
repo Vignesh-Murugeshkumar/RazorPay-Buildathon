@@ -1,0 +1,2112 @@
+[
+  {
+    "case_id": "dev_qual_01",
+    "category_code": "DEV_A",
+    "category_name": "Development Qualified",
+    "is_truly_defensible": true,
+    "expected_gate_decision": "AUTO_REPRESENT",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_qual_01",
+      "payment_id": "pay_dev_qual_01",
+      "amount": 215000,
+      "amount_inr": 2150.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.159.237",
+        "device_id": "dev_fingerprint_dev_qual_01",
+        "user_id": "user_dev_qual_01",
+        "shipping_address": "House 556, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD59103335IN",
+        "delivered_status": true,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_qual_01_hist_1",
+          "payment_id": "pay_dev_qual_01_hist_1",
+          "amount_inr": 2150.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.159.237",
+          "device_id": "dev_fingerprint_dev_qual_01",
+          "user_id": "user_dev_qual_01",
+          "shipping_address": "House 556, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        },
+        {
+          "transaction_id": "tx_dev_qual_01_hist_2",
+          "payment_id": "pay_dev_qual_01_hist_2",
+          "amount_inr": 2150.0,
+          "days_ago": 210,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.159.237",
+          "device_id": "dev_fingerprint_dev_qual_01",
+          "user_id": "user_dev_qual_01",
+          "shipping_address": "House 556, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_qual_02",
+    "category_code": "DEV_A",
+    "category_name": "Development Qualified",
+    "is_truly_defensible": true,
+    "expected_gate_decision": "AUTO_REPRESENT",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_qual_02",
+      "payment_id": "pay_dev_qual_02",
+      "amount": 230000,
+      "amount_inr": 2300.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.147.150",
+        "device_id": "dev_fingerprint_dev_qual_02",
+        "user_id": "user_dev_qual_02",
+        "shipping_address": "House 759, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD32238170IN",
+        "delivered_status": true,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_qual_02_hist_1",
+          "payment_id": "pay_dev_qual_02_hist_1",
+          "amount_inr": 2300.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.147.150",
+          "device_id": "dev_fingerprint_dev_qual_02",
+          "user_id": "user_dev_qual_02",
+          "shipping_address": "House 759, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        },
+        {
+          "transaction_id": "tx_dev_qual_02_hist_2",
+          "payment_id": "pay_dev_qual_02_hist_2",
+          "amount_inr": 2300.0,
+          "days_ago": 210,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.147.150",
+          "device_id": "dev_fingerprint_dev_qual_02",
+          "user_id": "user_dev_qual_02",
+          "shipping_address": "House 759, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_qual_03",
+    "category_code": "DEV_A",
+    "category_name": "Development Qualified",
+    "is_truly_defensible": true,
+    "expected_gate_decision": "AUTO_REPRESENT",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_qual_03",
+      "payment_id": "pay_dev_qual_03",
+      "amount": 245000,
+      "amount_inr": 2450.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.199.212",
+        "device_id": "dev_fingerprint_dev_qual_03",
+        "user_id": "user_dev_qual_03",
+        "shipping_address": "House 350, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD61499987IN",
+        "delivered_status": true,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_qual_03_hist_1",
+          "payment_id": "pay_dev_qual_03_hist_1",
+          "amount_inr": 2450.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.199.212",
+          "device_id": "dev_fingerprint_dev_qual_03",
+          "user_id": "user_dev_qual_03",
+          "shipping_address": "House 350, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        },
+        {
+          "transaction_id": "tx_dev_qual_03_hist_2",
+          "payment_id": "pay_dev_qual_03_hist_2",
+          "amount_inr": 2450.0,
+          "days_ago": 210,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.199.212",
+          "device_id": "dev_fingerprint_dev_qual_03",
+          "user_id": "user_dev_qual_03",
+          "shipping_address": "House 350, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_qual_04",
+    "category_code": "DEV_A",
+    "category_name": "Development Qualified",
+    "is_truly_defensible": true,
+    "expected_gate_decision": "AUTO_REPRESENT",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_qual_04",
+      "payment_id": "pay_dev_qual_04",
+      "amount": 260000,
+      "amount_inr": 2600.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.163.203",
+        "device_id": "dev_fingerprint_dev_qual_04",
+        "user_id": "user_dev_qual_04",
+        "shipping_address": "House 378, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD51289854IN",
+        "delivered_status": true,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_qual_04_hist_1",
+          "payment_id": "pay_dev_qual_04_hist_1",
+          "amount_inr": 2600.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.163.203",
+          "device_id": "dev_fingerprint_dev_qual_04",
+          "user_id": "user_dev_qual_04",
+          "shipping_address": "House 378, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        },
+        {
+          "transaction_id": "tx_dev_qual_04_hist_2",
+          "payment_id": "pay_dev_qual_04_hist_2",
+          "amount_inr": 2600.0,
+          "days_ago": 210,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.163.203",
+          "device_id": "dev_fingerprint_dev_qual_04",
+          "user_id": "user_dev_qual_04",
+          "shipping_address": "House 378, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_qual_05",
+    "category_code": "DEV_A",
+    "category_name": "Development Qualified",
+    "is_truly_defensible": true,
+    "expected_gate_decision": "AUTO_REPRESENT",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_qual_05",
+      "payment_id": "pay_dev_qual_05",
+      "amount": 275000,
+      "amount_inr": 2750.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.101.179",
+        "device_id": "dev_fingerprint_dev_qual_05",
+        "user_id": "user_dev_qual_05",
+        "shipping_address": "House 219, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD98084092IN",
+        "delivered_status": true,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_qual_05_hist_1",
+          "payment_id": "pay_dev_qual_05_hist_1",
+          "amount_inr": 2750.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.101.179",
+          "device_id": "dev_fingerprint_dev_qual_05",
+          "user_id": "user_dev_qual_05",
+          "shipping_address": "House 219, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        },
+        {
+          "transaction_id": "tx_dev_qual_05_hist_2",
+          "payment_id": "pay_dev_qual_05_hist_2",
+          "amount_inr": 2750.0,
+          "days_ago": 210,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.101.179",
+          "device_id": "dev_fingerprint_dev_qual_05",
+          "user_id": "user_dev_qual_05",
+          "shipping_address": "House 219, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_qual_06",
+    "category_code": "DEV_A",
+    "category_name": "Development Qualified",
+    "is_truly_defensible": true,
+    "expected_gate_decision": "AUTO_REPRESENT",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_qual_06",
+      "payment_id": "pay_dev_qual_06",
+      "amount": 290000,
+      "amount_inr": 2900.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.222.234",
+        "device_id": "dev_fingerprint_dev_qual_06",
+        "user_id": "user_dev_qual_06",
+        "shipping_address": "House 383, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD24668440IN",
+        "delivered_status": true,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_qual_06_hist_1",
+          "payment_id": "pay_dev_qual_06_hist_1",
+          "amount_inr": 2900.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.222.234",
+          "device_id": "dev_fingerprint_dev_qual_06",
+          "user_id": "user_dev_qual_06",
+          "shipping_address": "House 383, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        },
+        {
+          "transaction_id": "tx_dev_qual_06_hist_2",
+          "payment_id": "pay_dev_qual_06_hist_2",
+          "amount_inr": 2900.0,
+          "days_ago": 210,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.222.234",
+          "device_id": "dev_fingerprint_dev_qual_06",
+          "user_id": "user_dev_qual_06",
+          "shipping_address": "House 383, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_qual_07",
+    "category_code": "DEV_A",
+    "category_name": "Development Qualified",
+    "is_truly_defensible": true,
+    "expected_gate_decision": "AUTO_REPRESENT",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_qual_07",
+      "payment_id": "pay_dev_qual_07",
+      "amount": 305000,
+      "amount_inr": 3050.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.109.211",
+        "device_id": "dev_fingerprint_dev_qual_07",
+        "user_id": "user_dev_qual_07",
+        "shipping_address": "House 660, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD63517849IN",
+        "delivered_status": true,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_qual_07_hist_1",
+          "payment_id": "pay_dev_qual_07_hist_1",
+          "amount_inr": 3050.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.109.211",
+          "device_id": "dev_fingerprint_dev_qual_07",
+          "user_id": "user_dev_qual_07",
+          "shipping_address": "House 660, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        },
+        {
+          "transaction_id": "tx_dev_qual_07_hist_2",
+          "payment_id": "pay_dev_qual_07_hist_2",
+          "amount_inr": 3050.0,
+          "days_ago": 210,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.109.211",
+          "device_id": "dev_fingerprint_dev_qual_07",
+          "user_id": "user_dev_qual_07",
+          "shipping_address": "House 660, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_qual_08",
+    "category_code": "DEV_A",
+    "category_name": "Development Qualified",
+    "is_truly_defensible": true,
+    "expected_gate_decision": "AUTO_REPRESENT",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_qual_08",
+      "payment_id": "pay_dev_qual_08",
+      "amount": 320000,
+      "amount_inr": 3200.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.231.17",
+        "device_id": "dev_fingerprint_dev_qual_08",
+        "user_id": "user_dev_qual_08",
+        "shipping_address": "House 527, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD99673836IN",
+        "delivered_status": true,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_qual_08_hist_1",
+          "payment_id": "pay_dev_qual_08_hist_1",
+          "amount_inr": 3200.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.231.17",
+          "device_id": "dev_fingerprint_dev_qual_08",
+          "user_id": "user_dev_qual_08",
+          "shipping_address": "House 527, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        },
+        {
+          "transaction_id": "tx_dev_qual_08_hist_2",
+          "payment_id": "pay_dev_qual_08_hist_2",
+          "amount_inr": 3200.0,
+          "days_ago": 210,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.231.17",
+          "device_id": "dev_fingerprint_dev_qual_08",
+          "user_id": "user_dev_qual_08",
+          "shipping_address": "House 527, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_qual_09",
+    "category_code": "DEV_A",
+    "category_name": "Development Qualified",
+    "is_truly_defensible": true,
+    "expected_gate_decision": "AUTO_REPRESENT",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_qual_09",
+      "payment_id": "pay_dev_qual_09",
+      "amount": 335000,
+      "amount_inr": 3350.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.90.228",
+        "device_id": "dev_fingerprint_dev_qual_09",
+        "user_id": "user_dev_qual_09",
+        "shipping_address": "House 423, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD64139348IN",
+        "delivered_status": true,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_qual_09_hist_1",
+          "payment_id": "pay_dev_qual_09_hist_1",
+          "amount_inr": 3350.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.90.228",
+          "device_id": "dev_fingerprint_dev_qual_09",
+          "user_id": "user_dev_qual_09",
+          "shipping_address": "House 423, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        },
+        {
+          "transaction_id": "tx_dev_qual_09_hist_2",
+          "payment_id": "pay_dev_qual_09_hist_2",
+          "amount_inr": 3350.0,
+          "days_ago": 210,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.90.228",
+          "device_id": "dev_fingerprint_dev_qual_09",
+          "user_id": "user_dev_qual_09",
+          "shipping_address": "House 423, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_qual_10",
+    "category_code": "DEV_A",
+    "category_name": "Development Qualified",
+    "is_truly_defensible": true,
+    "expected_gate_decision": "AUTO_REPRESENT",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_qual_10",
+      "payment_id": "pay_dev_qual_10",
+      "amount": 350000,
+      "amount_inr": 3500.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.206.189",
+        "device_id": "dev_fingerprint_dev_qual_10",
+        "user_id": "user_dev_qual_10",
+        "shipping_address": "House 829, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD51721585IN",
+        "delivered_status": true,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_qual_10_hist_1",
+          "payment_id": "pay_dev_qual_10_hist_1",
+          "amount_inr": 3500.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.206.189",
+          "device_id": "dev_fingerprint_dev_qual_10",
+          "user_id": "user_dev_qual_10",
+          "shipping_address": "House 829, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        },
+        {
+          "transaction_id": "tx_dev_qual_10_hist_2",
+          "payment_id": "pay_dev_qual_10_hist_2",
+          "amount_inr": 3500.0,
+          "days_ago": 210,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.206.189",
+          "device_id": "dev_fingerprint_dev_qual_10",
+          "user_id": "user_dev_qual_10",
+          "shipping_address": "House 829, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_qual_11",
+    "category_code": "DEV_A",
+    "category_name": "Development Qualified",
+    "is_truly_defensible": true,
+    "expected_gate_decision": "AUTO_REPRESENT",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_qual_11",
+      "payment_id": "pay_dev_qual_11",
+      "amount": 365000,
+      "amount_inr": 3650.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.170.5",
+        "device_id": "dev_fingerprint_dev_qual_11",
+        "user_id": "user_dev_qual_11",
+        "shipping_address": "House 862, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD57401627IN",
+        "delivered_status": true,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_qual_11_hist_1",
+          "payment_id": "pay_dev_qual_11_hist_1",
+          "amount_inr": 3650.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.170.5",
+          "device_id": "dev_fingerprint_dev_qual_11",
+          "user_id": "user_dev_qual_11",
+          "shipping_address": "House 862, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        },
+        {
+          "transaction_id": "tx_dev_qual_11_hist_2",
+          "payment_id": "pay_dev_qual_11_hist_2",
+          "amount_inr": 3650.0,
+          "days_ago": 210,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.170.5",
+          "device_id": "dev_fingerprint_dev_qual_11",
+          "user_id": "user_dev_qual_11",
+          "shipping_address": "House 862, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_qual_12",
+    "category_code": "DEV_A",
+    "category_name": "Development Qualified",
+    "is_truly_defensible": true,
+    "expected_gate_decision": "AUTO_REPRESENT",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_qual_12",
+      "payment_id": "pay_dev_qual_12",
+      "amount": 380000,
+      "amount_inr": 3800.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.153.31",
+        "device_id": "dev_fingerprint_dev_qual_12",
+        "user_id": "user_dev_qual_12",
+        "shipping_address": "House 481, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD43068640IN",
+        "delivered_status": true,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_qual_12_hist_1",
+          "payment_id": "pay_dev_qual_12_hist_1",
+          "amount_inr": 3800.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.153.31",
+          "device_id": "dev_fingerprint_dev_qual_12",
+          "user_id": "user_dev_qual_12",
+          "shipping_address": "House 481, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        },
+        {
+          "transaction_id": "tx_dev_qual_12_hist_2",
+          "payment_id": "pay_dev_qual_12_hist_2",
+          "amount_inr": 3800.0,
+          "days_ago": 210,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.153.31",
+          "device_id": "dev_fingerprint_dev_qual_12",
+          "user_id": "user_dev_qual_12",
+          "shipping_address": "House 481, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_qual_13",
+    "category_code": "DEV_A",
+    "category_name": "Development Qualified",
+    "is_truly_defensible": true,
+    "expected_gate_decision": "AUTO_REPRESENT",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_qual_13",
+      "payment_id": "pay_dev_qual_13",
+      "amount": 395000,
+      "amount_inr": 3950.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.246.44",
+        "device_id": "dev_fingerprint_dev_qual_13",
+        "user_id": "user_dev_qual_13",
+        "shipping_address": "House 824, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD52107845IN",
+        "delivered_status": true,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_qual_13_hist_1",
+          "payment_id": "pay_dev_qual_13_hist_1",
+          "amount_inr": 3950.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.246.44",
+          "device_id": "dev_fingerprint_dev_qual_13",
+          "user_id": "user_dev_qual_13",
+          "shipping_address": "House 824, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        },
+        {
+          "transaction_id": "tx_dev_qual_13_hist_2",
+          "payment_id": "pay_dev_qual_13_hist_2",
+          "amount_inr": 3950.0,
+          "days_ago": 210,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.246.44",
+          "device_id": "dev_fingerprint_dev_qual_13",
+          "user_id": "user_dev_qual_13",
+          "shipping_address": "House 824, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_qual_14",
+    "category_code": "DEV_A",
+    "category_name": "Development Qualified",
+    "is_truly_defensible": true,
+    "expected_gate_decision": "AUTO_REPRESENT",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_qual_14",
+      "payment_id": "pay_dev_qual_14",
+      "amount": 410000,
+      "amount_inr": 4100.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.174.177",
+        "device_id": "dev_fingerprint_dev_qual_14",
+        "user_id": "user_dev_qual_14",
+        "shipping_address": "House 953, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD91146985IN",
+        "delivered_status": true,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_qual_14_hist_1",
+          "payment_id": "pay_dev_qual_14_hist_1",
+          "amount_inr": 4100.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.174.177",
+          "device_id": "dev_fingerprint_dev_qual_14",
+          "user_id": "user_dev_qual_14",
+          "shipping_address": "House 953, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        },
+        {
+          "transaction_id": "tx_dev_qual_14_hist_2",
+          "payment_id": "pay_dev_qual_14_hist_2",
+          "amount_inr": 4100.0,
+          "days_ago": 210,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.174.177",
+          "device_id": "dev_fingerprint_dev_qual_14",
+          "user_id": "user_dev_qual_14",
+          "shipping_address": "House 953, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_qual_15",
+    "category_code": "DEV_A",
+    "category_name": "Development Qualified",
+    "is_truly_defensible": true,
+    "expected_gate_decision": "AUTO_REPRESENT",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_qual_15",
+      "payment_id": "pay_dev_qual_15",
+      "amount": 425000,
+      "amount_inr": 4250.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.118.155",
+        "device_id": "dev_fingerprint_dev_qual_15",
+        "user_id": "user_dev_qual_15",
+        "shipping_address": "House 281, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD36975279IN",
+        "delivered_status": true,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_qual_15_hist_1",
+          "payment_id": "pay_dev_qual_15_hist_1",
+          "amount_inr": 4250.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.118.155",
+          "device_id": "dev_fingerprint_dev_qual_15",
+          "user_id": "user_dev_qual_15",
+          "shipping_address": "House 281, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        },
+        {
+          "transaction_id": "tx_dev_qual_15_hist_2",
+          "payment_id": "pay_dev_qual_15_hist_2",
+          "amount_inr": 4250.0,
+          "days_ago": 210,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.118.155",
+          "device_id": "dev_fingerprint_dev_qual_15",
+          "user_id": "user_dev_qual_15",
+          "shipping_address": "House 281, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_qual_16",
+    "category_code": "DEV_A",
+    "category_name": "Development Qualified",
+    "is_truly_defensible": true,
+    "expected_gate_decision": "AUTO_REPRESENT",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_qual_16",
+      "payment_id": "pay_dev_qual_16",
+      "amount": 440000,
+      "amount_inr": 4400.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.141.18",
+        "device_id": "dev_fingerprint_dev_qual_16",
+        "user_id": "user_dev_qual_16",
+        "shipping_address": "House 663, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD80523822IN",
+        "delivered_status": true,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_qual_16_hist_1",
+          "payment_id": "pay_dev_qual_16_hist_1",
+          "amount_inr": 4400.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.141.18",
+          "device_id": "dev_fingerprint_dev_qual_16",
+          "user_id": "user_dev_qual_16",
+          "shipping_address": "House 663, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        },
+        {
+          "transaction_id": "tx_dev_qual_16_hist_2",
+          "payment_id": "pay_dev_qual_16_hist_2",
+          "amount_inr": 4400.0,
+          "days_ago": 210,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.141.18",
+          "device_id": "dev_fingerprint_dev_qual_16",
+          "user_id": "user_dev_qual_16",
+          "shipping_address": "House 663, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_qual_17",
+    "category_code": "DEV_A",
+    "category_name": "Development Qualified",
+    "is_truly_defensible": true,
+    "expected_gate_decision": "AUTO_REPRESENT",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_qual_17",
+      "payment_id": "pay_dev_qual_17",
+      "amount": 455000,
+      "amount_inr": 4550.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.249.159",
+        "device_id": "dev_fingerprint_dev_qual_17",
+        "user_id": "user_dev_qual_17",
+        "shipping_address": "House 601, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD15889528IN",
+        "delivered_status": true,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_qual_17_hist_1",
+          "payment_id": "pay_dev_qual_17_hist_1",
+          "amount_inr": 4550.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.249.159",
+          "device_id": "dev_fingerprint_dev_qual_17",
+          "user_id": "user_dev_qual_17",
+          "shipping_address": "House 601, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        },
+        {
+          "transaction_id": "tx_dev_qual_17_hist_2",
+          "payment_id": "pay_dev_qual_17_hist_2",
+          "amount_inr": 4550.0,
+          "days_ago": 210,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.249.159",
+          "device_id": "dev_fingerprint_dev_qual_17",
+          "user_id": "user_dev_qual_17",
+          "shipping_address": "House 601, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_qual_18",
+    "category_code": "DEV_A",
+    "category_name": "Development Qualified",
+    "is_truly_defensible": true,
+    "expected_gate_decision": "AUTO_REPRESENT",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_qual_18",
+      "payment_id": "pay_dev_qual_18",
+      "amount": 470000,
+      "amount_inr": 4700.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.19.105",
+        "device_id": "dev_fingerprint_dev_qual_18",
+        "user_id": "user_dev_qual_18",
+        "shipping_address": "House 995, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD97633809IN",
+        "delivered_status": true,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_qual_18_hist_1",
+          "payment_id": "pay_dev_qual_18_hist_1",
+          "amount_inr": 4700.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.19.105",
+          "device_id": "dev_fingerprint_dev_qual_18",
+          "user_id": "user_dev_qual_18",
+          "shipping_address": "House 995, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        },
+        {
+          "transaction_id": "tx_dev_qual_18_hist_2",
+          "payment_id": "pay_dev_qual_18_hist_2",
+          "amount_inr": 4700.0,
+          "days_ago": 210,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.19.105",
+          "device_id": "dev_fingerprint_dev_qual_18",
+          "user_id": "user_dev_qual_18",
+          "shipping_address": "House 995, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_qual_19",
+    "category_code": "DEV_A",
+    "category_name": "Development Qualified",
+    "is_truly_defensible": true,
+    "expected_gate_decision": "AUTO_REPRESENT",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_qual_19",
+      "payment_id": "pay_dev_qual_19",
+      "amount": 485000,
+      "amount_inr": 4850.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.231.159",
+        "device_id": "dev_fingerprint_dev_qual_19",
+        "user_id": "user_dev_qual_19",
+        "shipping_address": "House 65, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD12300561IN",
+        "delivered_status": true,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_qual_19_hist_1",
+          "payment_id": "pay_dev_qual_19_hist_1",
+          "amount_inr": 4850.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.231.159",
+          "device_id": "dev_fingerprint_dev_qual_19",
+          "user_id": "user_dev_qual_19",
+          "shipping_address": "House 65, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        },
+        {
+          "transaction_id": "tx_dev_qual_19_hist_2",
+          "payment_id": "pay_dev_qual_19_hist_2",
+          "amount_inr": 4850.0,
+          "days_ago": 210,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.231.159",
+          "device_id": "dev_fingerprint_dev_qual_19",
+          "user_id": "user_dev_qual_19",
+          "shipping_address": "House 65, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_qual_20",
+    "category_code": "DEV_A",
+    "category_name": "Development Qualified",
+    "is_truly_defensible": true,
+    "expected_gate_decision": "AUTO_REPRESENT",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_qual_20",
+      "payment_id": "pay_dev_qual_20",
+      "amount": 500000,
+      "amount_inr": 5000.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.163.51",
+        "device_id": "dev_fingerprint_dev_qual_20",
+        "user_id": "user_dev_qual_20",
+        "shipping_address": "House 211, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD24037871IN",
+        "delivered_status": true,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_qual_20_hist_1",
+          "payment_id": "pay_dev_qual_20_hist_1",
+          "amount_inr": 5000.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.163.51",
+          "device_id": "dev_fingerprint_dev_qual_20",
+          "user_id": "user_dev_qual_20",
+          "shipping_address": "House 211, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        },
+        {
+          "transaction_id": "tx_dev_qual_20_hist_2",
+          "payment_id": "pay_dev_qual_20_hist_2",
+          "amount_inr": 5000.0,
+          "days_ago": 210,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.163.51",
+          "device_id": "dev_fingerprint_dev_qual_20",
+          "user_id": "user_dev_qual_20",
+          "shipping_address": "House 211, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_hitl_01",
+    "category_code": "DEV_B",
+    "category_name": "Development HITL",
+    "is_truly_defensible": false,
+    "expected_gate_decision": "HITL_REVIEW",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_hitl_01",
+      "payment_id": "pay_dev_hitl_01",
+      "amount": 400000,
+      "amount_inr": 4000.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.73.51",
+        "device_id": "dev_fingerprint_dev_hitl_01",
+        "user_id": "user_dev_hitl_01",
+        "shipping_address": "House 473, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD86326708IN",
+        "delivered_status": false,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_hitl_01_hist_1",
+          "payment_id": "pay_dev_hitl_01_hist_1",
+          "amount_inr": 4000.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.73.51",
+          "device_id": "dev_fingerprint_dev_hitl_01",
+          "user_id": "user_dev_hitl_01",
+          "shipping_address": "House 473, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_hitl_02",
+    "category_code": "DEV_B",
+    "category_name": "Development HITL",
+    "is_truly_defensible": false,
+    "expected_gate_decision": "HITL_REVIEW",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_hitl_02",
+      "payment_id": "pay_dev_hitl_02",
+      "amount": 400000,
+      "amount_inr": 4000.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.81.4",
+        "device_id": "dev_fingerprint_dev_hitl_02",
+        "user_id": "user_dev_hitl_02",
+        "shipping_address": "House 824, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD91979281IN",
+        "delivered_status": false,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_hitl_02_hist_1",
+          "payment_id": "pay_dev_hitl_02_hist_1",
+          "amount_inr": 4000.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.81.4",
+          "device_id": "dev_fingerprint_dev_hitl_02",
+          "user_id": "user_dev_hitl_02",
+          "shipping_address": "House 824, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_hitl_03",
+    "category_code": "DEV_B",
+    "category_name": "Development HITL",
+    "is_truly_defensible": false,
+    "expected_gate_decision": "HITL_REVIEW",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_hitl_03",
+      "payment_id": "pay_dev_hitl_03",
+      "amount": 400000,
+      "amount_inr": 4000.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.86.111",
+        "device_id": "dev_fingerprint_dev_hitl_03",
+        "user_id": "user_dev_hitl_03",
+        "shipping_address": "House 595, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD40709728IN",
+        "delivered_status": false,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_hitl_03_hist_1",
+          "payment_id": "pay_dev_hitl_03_hist_1",
+          "amount_inr": 4000.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.86.111",
+          "device_id": "dev_fingerprint_dev_hitl_03",
+          "user_id": "user_dev_hitl_03",
+          "shipping_address": "House 595, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_hitl_04",
+    "category_code": "DEV_B",
+    "category_name": "Development HITL",
+    "is_truly_defensible": false,
+    "expected_gate_decision": "HITL_REVIEW",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_hitl_04",
+      "payment_id": "pay_dev_hitl_04",
+      "amount": 400000,
+      "amount_inr": 4000.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.141.12",
+        "device_id": "dev_fingerprint_dev_hitl_04",
+        "user_id": "user_dev_hitl_04",
+        "shipping_address": "House 804, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD84545893IN",
+        "delivered_status": false,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_hitl_04_hist_1",
+          "payment_id": "pay_dev_hitl_04_hist_1",
+          "amount_inr": 4000.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.141.12",
+          "device_id": "dev_fingerprint_dev_hitl_04",
+          "user_id": "user_dev_hitl_04",
+          "shipping_address": "House 804, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_hitl_05",
+    "category_code": "DEV_B",
+    "category_name": "Development HITL",
+    "is_truly_defensible": false,
+    "expected_gate_decision": "HITL_REVIEW",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_hitl_05",
+      "payment_id": "pay_dev_hitl_05",
+      "amount": 400000,
+      "amount_inr": 4000.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.186.166",
+        "device_id": "dev_fingerprint_dev_hitl_05",
+        "user_id": "user_dev_hitl_05",
+        "shipping_address": "House 324, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD38675684IN",
+        "delivered_status": false,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_hitl_05_hist_1",
+          "payment_id": "pay_dev_hitl_05_hist_1",
+          "amount_inr": 4000.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.186.166",
+          "device_id": "dev_fingerprint_dev_hitl_05",
+          "user_id": "user_dev_hitl_05",
+          "shipping_address": "House 324, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_hitl_06",
+    "category_code": "DEV_B",
+    "category_name": "Development HITL",
+    "is_truly_defensible": false,
+    "expected_gate_decision": "HITL_REVIEW",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_hitl_06",
+      "payment_id": "pay_dev_hitl_06",
+      "amount": 400000,
+      "amount_inr": 4000.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.157.250",
+        "device_id": "dev_fingerprint_dev_hitl_06",
+        "user_id": "user_dev_hitl_06",
+        "shipping_address": "House 195, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD81011352IN",
+        "delivered_status": false,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_hitl_06_hist_1",
+          "payment_id": "pay_dev_hitl_06_hist_1",
+          "amount_inr": 4000.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.157.250",
+          "device_id": "dev_fingerprint_dev_hitl_06",
+          "user_id": "user_dev_hitl_06",
+          "shipping_address": "House 195, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_hitl_07",
+    "category_code": "DEV_B",
+    "category_name": "Development HITL",
+    "is_truly_defensible": false,
+    "expected_gate_decision": "HITL_REVIEW",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_hitl_07",
+      "payment_id": "pay_dev_hitl_07",
+      "amount": 400000,
+      "amount_inr": 4000.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.135.136",
+        "device_id": "dev_fingerprint_dev_hitl_07",
+        "user_id": "user_dev_hitl_07",
+        "shipping_address": "House 199, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD98937698IN",
+        "delivered_status": false,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_hitl_07_hist_1",
+          "payment_id": "pay_dev_hitl_07_hist_1",
+          "amount_inr": 4000.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.135.136",
+          "device_id": "dev_fingerprint_dev_hitl_07",
+          "user_id": "user_dev_hitl_07",
+          "shipping_address": "House 199, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_hitl_08",
+    "category_code": "DEV_B",
+    "category_name": "Development HITL",
+    "is_truly_defensible": false,
+    "expected_gate_decision": "HITL_REVIEW",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_hitl_08",
+      "payment_id": "pay_dev_hitl_08",
+      "amount": 400000,
+      "amount_inr": 4000.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.13.192",
+        "device_id": "dev_fingerprint_dev_hitl_08",
+        "user_id": "user_dev_hitl_08",
+        "shipping_address": "House 516, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD88350948IN",
+        "delivered_status": false,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_hitl_08_hist_1",
+          "payment_id": "pay_dev_hitl_08_hist_1",
+          "amount_inr": 4000.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.13.192",
+          "device_id": "dev_fingerprint_dev_hitl_08",
+          "user_id": "user_dev_hitl_08",
+          "shipping_address": "House 516, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_hitl_09",
+    "category_code": "DEV_B",
+    "category_name": "Development HITL",
+    "is_truly_defensible": false,
+    "expected_gate_decision": "HITL_REVIEW",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_hitl_09",
+      "payment_id": "pay_dev_hitl_09",
+      "amount": 400000,
+      "amount_inr": 4000.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.117.250",
+        "device_id": "dev_fingerprint_dev_hitl_09",
+        "user_id": "user_dev_hitl_09",
+        "shipping_address": "House 930, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD13296903IN",
+        "delivered_status": false,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_hitl_09_hist_1",
+          "payment_id": "pay_dev_hitl_09_hist_1",
+          "amount_inr": 4000.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.117.250",
+          "device_id": "dev_fingerprint_dev_hitl_09",
+          "user_id": "user_dev_hitl_09",
+          "shipping_address": "House 930, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_hitl_10",
+    "category_code": "DEV_B",
+    "category_name": "Development HITL",
+    "is_truly_defensible": false,
+    "expected_gate_decision": "HITL_REVIEW",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_hitl_10",
+      "payment_id": "pay_dev_hitl_10",
+      "amount": 400000,
+      "amount_inr": 4000.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.207.134",
+        "device_id": "dev_fingerprint_dev_hitl_10",
+        "user_id": "user_dev_hitl_10",
+        "shipping_address": "House 509, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": {
+        "carrier_name": "BlueDart Express",
+        "tracking_number": "BD82789928IN",
+        "delivered_status": false,
+        "delivery_date": "2026-08-15T14:30:00Z",
+        "recipient_signature_present": true,
+        "gps_latitude": 12.9716,
+        "gps_longitude": 77.5946,
+        "verified_gps": true
+      },
+      "digital_proof": null,
+      "historical_transactions": [
+        {
+          "transaction_id": "tx_dev_hitl_10_hist_1",
+          "payment_id": "pay_dev_hitl_10_hist_1",
+          "amount_inr": 4000.0,
+          "days_ago": 170,
+          "card_last4": "4242",
+          "card_network": "visa",
+          "ip_address": "49.207.207.134",
+          "device_id": "dev_fingerprint_dev_hitl_10",
+          "user_id": "user_dev_hitl_10",
+          "shipping_address": "House 509, Indiranagar, Bengaluru 560038",
+          "undisputed": true
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "dev_loss_01",
+    "category_code": "DEV_C",
+    "category_name": "Development Unprofitable",
+    "is_truly_defensible": false,
+    "expected_gate_decision": "ACCEPT_LOSS",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_loss_01",
+      "payment_id": "pay_dev_loss_01",
+      "amount": 30000,
+      "amount_inr": 300.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.193.168",
+        "device_id": "dev_fingerprint_dev_loss_01",
+        "user_id": "user_dev_loss_01",
+        "shipping_address": "House 756, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": null,
+      "digital_proof": null,
+      "historical_transactions": []
+    }
+  },
+  {
+    "case_id": "dev_loss_02",
+    "category_code": "DEV_C",
+    "category_name": "Development Unprofitable",
+    "is_truly_defensible": false,
+    "expected_gate_decision": "ACCEPT_LOSS",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_loss_02",
+      "payment_id": "pay_dev_loss_02",
+      "amount": 30000,
+      "amount_inr": 300.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.239.91",
+        "device_id": "dev_fingerprint_dev_loss_02",
+        "user_id": "user_dev_loss_02",
+        "shipping_address": "House 762, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": null,
+      "digital_proof": null,
+      "historical_transactions": []
+    }
+  },
+  {
+    "case_id": "dev_loss_03",
+    "category_code": "DEV_C",
+    "category_name": "Development Unprofitable",
+    "is_truly_defensible": false,
+    "expected_gate_decision": "ACCEPT_LOSS",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_loss_03",
+      "payment_id": "pay_dev_loss_03",
+      "amount": 30000,
+      "amount_inr": 300.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.143.205",
+        "device_id": "dev_fingerprint_dev_loss_03",
+        "user_id": "user_dev_loss_03",
+        "shipping_address": "House 592, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": null,
+      "digital_proof": null,
+      "historical_transactions": []
+    }
+  },
+  {
+    "case_id": "dev_loss_04",
+    "category_code": "DEV_C",
+    "category_name": "Development Unprofitable",
+    "is_truly_defensible": false,
+    "expected_gate_decision": "ACCEPT_LOSS",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_loss_04",
+      "payment_id": "pay_dev_loss_04",
+      "amount": 30000,
+      "amount_inr": 300.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.166.66",
+        "device_id": "dev_fingerprint_dev_loss_04",
+        "user_id": "user_dev_loss_04",
+        "shipping_address": "House 278, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": null,
+      "digital_proof": null,
+      "historical_transactions": []
+    }
+  },
+  {
+    "case_id": "dev_loss_05",
+    "category_code": "DEV_C",
+    "category_name": "Development Unprofitable",
+    "is_truly_defensible": false,
+    "expected_gate_decision": "ACCEPT_LOSS",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_loss_05",
+      "payment_id": "pay_dev_loss_05",
+      "amount": 30000,
+      "amount_inr": 300.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.18.182",
+        "device_id": "dev_fingerprint_dev_loss_05",
+        "user_id": "user_dev_loss_05",
+        "shipping_address": "House 143, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": null,
+      "digital_proof": null,
+      "historical_transactions": []
+    }
+  },
+  {
+    "case_id": "dev_loss_06",
+    "category_code": "DEV_C",
+    "category_name": "Development Unprofitable",
+    "is_truly_defensible": false,
+    "expected_gate_decision": "ACCEPT_LOSS",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_loss_06",
+      "payment_id": "pay_dev_loss_06",
+      "amount": 30000,
+      "amount_inr": 300.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.243.16",
+        "device_id": "dev_fingerprint_dev_loss_06",
+        "user_id": "user_dev_loss_06",
+        "shipping_address": "House 935, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": null,
+      "digital_proof": null,
+      "historical_transactions": []
+    }
+  },
+  {
+    "case_id": "dev_loss_07",
+    "category_code": "DEV_C",
+    "category_name": "Development Unprofitable",
+    "is_truly_defensible": false,
+    "expected_gate_decision": "ACCEPT_LOSS",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_loss_07",
+      "payment_id": "pay_dev_loss_07",
+      "amount": 30000,
+      "amount_inr": 300.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.44.81",
+        "device_id": "dev_fingerprint_dev_loss_07",
+        "user_id": "user_dev_loss_07",
+        "shipping_address": "House 849, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": null,
+      "digital_proof": null,
+      "historical_transactions": []
+    }
+  },
+  {
+    "case_id": "dev_loss_08",
+    "category_code": "DEV_C",
+    "category_name": "Development Unprofitable",
+    "is_truly_defensible": false,
+    "expected_gate_decision": "ACCEPT_LOSS",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_loss_08",
+      "payment_id": "pay_dev_loss_08",
+      "amount": 30000,
+      "amount_inr": 300.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.21.50",
+        "device_id": "dev_fingerprint_dev_loss_08",
+        "user_id": "user_dev_loss_08",
+        "shipping_address": "House 460, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": null,
+      "digital_proof": null,
+      "historical_transactions": []
+    }
+  },
+  {
+    "case_id": "dev_loss_09",
+    "category_code": "DEV_C",
+    "category_name": "Development Unprofitable",
+    "is_truly_defensible": false,
+    "expected_gate_decision": "ACCEPT_LOSS",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_loss_09",
+      "payment_id": "pay_dev_loss_09",
+      "amount": 30000,
+      "amount_inr": 300.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.244.139",
+        "device_id": "dev_fingerprint_dev_loss_09",
+        "user_id": "user_dev_loss_09",
+        "shipping_address": "House 863, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": null,
+      "digital_proof": null,
+      "historical_transactions": []
+    }
+  },
+  {
+    "case_id": "dev_loss_10",
+    "category_code": "DEV_C",
+    "category_name": "Development Unprofitable",
+    "is_truly_defensible": false,
+    "expected_gate_decision": "ACCEPT_LOSS",
+    "payload": {
+      "event": "payment.dispute.created",
+      "dispute_id": "disp_dev_loss_10",
+      "payment_id": "pay_dev_loss_10",
+      "amount": 30000,
+      "amount_inr": 300.0,
+      "currency": "INR",
+      "card_network": "visa",
+      "reason_code": "10.4",
+      "service_type": "physical",
+      "status": "open",
+      "telemetry": {
+        "ip_address": "49.207.65.225",
+        "device_id": "dev_fingerprint_dev_loss_10",
+        "user_id": "user_dev_loss_10",
+        "shipping_address": "House 64, Indiranagar, Bengaluru 560038",
+        "mfa_authenticated": true
+      },
+      "carrier_proof": null,
+      "digital_proof": null,
+      "historical_transactions": []
+    }
+  }
+]
