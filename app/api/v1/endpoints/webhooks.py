@@ -41,7 +41,7 @@ async def handle_razorpay_dispute_webhook(
 ):
     """
     Production Ingress Point for Razorpay payment.dispute.created webhooks.
-    Validates HMAC-SHA256 signature, timestamp tolerance, and replay nonces before invoking LangGraph state graph.
+    Validates HMAC-SHA256 signature, timestamp tolerance, and replay nonces before invoking deterministic state graph.
     """
     correlation_id = str(uuid.uuid4())
     raw_body = await request.body()
@@ -104,21 +104,28 @@ async def handle_razorpay_dispute_webhook(
             detail="Missing required X-Razorpay-Event-Time header in production"
         )
 
-    # 3. Event ID Nonce / Replay Guard
+    # 3. Event ID Nonce / Replay Guard / State Machine Lifecycle
     if x_razorpay_event_id is not None:
-        is_fresh = db.record_and_verify_event(
+        action, cached_result = db.register_webhook_event(
             event_id=x_razorpay_event_id,
             signature=x_razorpay_signature or "no_signature"
         )
-        if not is_fresh:
+        if action == "COMPLETED":
+            logger.info(
+                "Duplicate webhook event ID already completed; returning idempotent result",
+                correlation_id=correlation_id,
+                event_id=x_razorpay_event_id
+            )
+            return cached_result
+        elif action == "PROCESSING":
             logger.warning(
-                "Duplicate webhook event detected and rejected",
+                "Duplicate webhook event currently processing",
                 correlation_id=correlation_id,
                 event_id=x_razorpay_event_id
             )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Duplicate webhook event ID {x_razorpay_event_id} already processed"
+                detail=f"Webhook event ID {x_razorpay_event_id} is currently being processed"
             )
 
     # 4. Validate Schema
@@ -126,6 +133,8 @@ async def handle_razorpay_dispute_webhook(
         payload_dict = await request.json()
         dispute_payload = RazorpayDisputeWebhook.model_validate(payload_dict)
     except Exception as e:
+        if x_razorpay_event_id is not None:
+            db.fail_webhook_event(x_razorpay_event_id, error_message=f"Schema validation failure: {str(e)}")
         logger.error("Webhook payload validation failure", correlation_id=correlation_id, error=str(e))
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -154,18 +163,29 @@ async def handle_razorpay_dispute_webhook(
         amount=dispute_payload.amount_inr
     )
 
-    # 6. Execute LangGraph Deterministic State Machine Workflow
-    dossier = execute_dispute_workflow(dispute_payload)
-    get_dossiers_db()[dossier.dispute_id] = dossier
-    db.save_dossier(dossier, dispute_payload)
+    # 6. Execute Deterministic Python State Machine Workflow
+    try:
+        dossier = execute_dispute_workflow(dispute_payload)
+        get_dossiers_db()[dossier.dispute_id] = dossier
+        db.save_dossier(dossier, dispute_payload)
 
-    return {
-        "status": "success",
-        "correlation_id": correlation_id,
-        "dispute_id": dossier.dispute_id,
-        "payment_id": dossier.payment_id,
-        "decision": dossier.decision,
-        "confidence_score": dossier.confidence_score,
-        "sealed_hash": dossier.sealed_hash,
-        "summary": dossier.summary
-    }
+        result_payload = {
+            "status": "success",
+            "correlation_id": correlation_id,
+            "dispute_id": dossier.dispute_id,
+            "payment_id": dossier.payment_id,
+            "decision": dossier.decision,
+            "confidence_score": dossier.confidence_score,
+            "sealed_hash": dossier.sealed_hash,
+            "summary": dossier.summary
+        }
+
+        if x_razorpay_event_id is not None:
+            db.complete_webhook_event(x_razorpay_event_id, result_payload)
+
+        return result_payload
+    except Exception as e:
+        if x_razorpay_event_id is not None:
+            db.fail_webhook_event(x_razorpay_event_id, error_message=str(e))
+        raise
+

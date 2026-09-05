@@ -100,9 +100,12 @@ def test_real_razorpay_webhook_e2e_lifecycle():
     assert data["dispute_id"] == dispute_id
     assert "sealed_hash" in data
 
-    # 2. Replay Prevention: Submitting identical event_id must return 409 Conflict
+    # 2. Idempotent Replay (A7 Lifecycle): Submitting identical event_id once completed returns 200 with cached result
     replay_resp = client.post("/api/v1/webhook", content=raw_body, headers=headers)
-    assert replay_resp.status_code == 409, "Replay attack was not blocked with 409 Conflict"
+    assert replay_resp.status_code == 200, "Idempotent replay failed"
+    replay_data = replay_resp.json()
+    assert replay_data["dispute_id"] == dispute_id
+    assert replay_data["sealed_hash"] == data["sealed_hash"]
 
     # 3. Ledger Integrity Verification
     integrity = ledger.verify_integrity()

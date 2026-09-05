@@ -1,10 +1,13 @@
 import datetime
-from typing import TypedDict, Optional, Dict, Any, List
+from typing import TypedDict, Optional, Dict, Any, List, Tuple
 from app.schemas.dispute import (
     DisputePayload,
     RuleEvaluationResult,
     DecisionExplanation,
-    Dossier
+    Dossier,
+    EvidenceStatus,
+    EvidenceItem,
+    EvidenceContradiction
 )
 from app.rules.card_rules import evaluate_dispute_compliance
 from app.rules.service_disputes import evaluate_service_dispute_compliance
@@ -14,14 +17,6 @@ from app.services.issuer_intelligence import issuer_intelligence
 from app.services.ledger import ledger
 from app.core.db import db
 from app.core.security import compute_sha256_hash
-
-try:
-    from langgraph.graph import StateGraph, END
-    LANGGRAPH_AVAILABLE = True
-except ImportError:
-    LANGGRAPH_AVAILABLE = False
-    StateGraph = None
-    END = None
 
 
 class DisputeState(TypedDict, total=False):
@@ -129,14 +124,345 @@ def aggregator_agent_node(state: DisputeState) -> DisputeState:
     }
 
 
+def extract_evidence_and_contradictions(payload: DisputePayload) -> Tuple[List[EvidenceItem], List[EvidenceContradiction], Dict[str, EvidenceStatus]]:
+    """
+    Extracts canonical EvidenceItem objects from dispute ingress payload,
+    detects factual contradictions with deterministic thresholds,
+    and returns (items, contradictions, statuses).
+    """
+    contradictions: List[EvidenceContradiction] = []
+    
+    # Check Contradictions with explicit deterministic rules
+    # 1. Carrier delivery claim with missing tracking number
+    has_carrier = payload.carrier_proof is not None
+    if has_carrier and payload.carrier_proof.delivered_status:
+        trk = payload.carrier_proof.tracking_number
+        if not trk or not str(trk).strip():
+            contradictions.append(EvidenceContradiction(
+                conflict_id="CONF-001",
+                evidence_ids=["EV-004"],
+                fields=["delivered_status", "tracking_number"],
+                description="Carrier proof asserts delivered_status=True but tracking_number is missing or empty.",
+                severity="HIGH"
+            ))
+
+    # 2. Recipient signature recorded on undelivered shipment
+    if has_carrier and (not payload.carrier_proof.delivered_status) and payload.carrier_proof.recipient_signature_present:
+        contradictions.append(EvidenceContradiction(
+            conflict_id="CONF-002",
+            evidence_ids=["EV-004"],
+            fields=["delivered_status", "recipient_signature_present"],
+            description="Recipient signature recorded on delivery slip while carrier delivery status is false/unconfirmed.",
+            severity="HIGH"
+        ))
+
+    # 3. GPS coordinates outside 50m perimeter on delivered shipment (>50m distance)
+    if has_carrier and payload.carrier_proof.gps_latitude is not None and payload.carrier_proof.delivered_status and not payload.carrier_proof.verified_gps:
+        contradictions.append(EvidenceContradiction(
+            conflict_id="CONF-003",
+            evidence_ids=["EV-005"],
+            fields=["gps_latitude", "verified_gps"],
+            description="Carrier GPS coordinates recorded at delivery lie outside the 50m cardholder address perimeter despite delivery confirmation.",
+            severity="HIGH"
+        ))
+
+    # 4. Digital service consumed while cardholder account inactive
+    has_digital = payload.digital_proof is not None
+    if has_digital and payload.digital_proof.access_logs_verified and (not payload.digital_proof.user_account_active):
+        contradictions.append(EvidenceContradiction(
+            conflict_id="CONF-004",
+            evidence_ids=["EV-007"],
+            fields=["access_logs_verified", "user_account_active"],
+            description="Digital access logs verified as consumed while cardholder account is inactive/closed.",
+            severity="HIGH"
+        ))
+
+    conflicted_ev_ids = set()
+    for conf in contradictions:
+        conflicted_ev_ids.update(conf.evidence_ids)
+
+    items: List[EvidenceItem] = []
+
+    # EV-001: Customer IP
+    has_telemetry = payload.telemetry is not None
+    ip_val = payload.telemetry.ip_address if has_telemetry else None
+    if ip_val:
+        ev01_status = EvidenceStatus.VERIFIED
+        ev01_contrib = 5.0
+    else:
+        ev01_status = EvidenceStatus.MISSING
+        ev01_contrib = 0.0
+    items.append(EvidenceItem(
+        evidence_id="EV-001",
+        evidence_type="CUSTOMER_IP",
+        status=ev01_status,
+        value=ip_val,
+        source="checkout_telemetry",
+        rule_ids=["RULE-IP-TELEMETRY"],
+        score_contribution=ev01_contrib
+    ))
+
+    # EV-002: Device Fingerprint
+    dev_val = payload.telemetry.device_id if has_telemetry else None
+    if dev_val:
+        ev02_status = EvidenceStatus.VERIFIED
+        ev02_contrib = 5.0
+    else:
+        ev02_status = EvidenceStatus.MISSING
+        ev02_contrib = 0.0
+    items.append(EvidenceItem(
+        evidence_id="EV-002",
+        evidence_type="DEVICE_FINGERPRINT",
+        status=ev02_status,
+        value=dev_val,
+        source="checkout_telemetry",
+        rule_ids=["RULE-DEVICE-FP"],
+        score_contribution=ev02_contrib
+    ))
+
+    # EV-003: Payment Authentication / 3DS
+    mfa_val = payload.telemetry.mfa_authenticated if has_telemetry else None
+    if not has_telemetry:
+        ev03_status = EvidenceStatus.MISSING
+        ev03_contrib = 0.0
+    elif payload.telemetry.mfa_authenticated:
+        ev03_status = EvidenceStatus.VERIFIED
+        ev03_contrib = 20.0
+    else:
+        ev03_status = EvidenceStatus.UNVERIFIED
+        ev03_contrib = 0.0
+    items.append(EvidenceItem(
+        evidence_id="EV-003",
+        evidence_type="PAYMENT_AUTHENTICATION",
+        status=ev03_status,
+        value=mfa_val,
+        source="checkout_telemetry",
+        rule_ids=["RULE-3DS-MFA"],
+        score_contribution=ev03_contrib
+    ))
+
+    # EV-004: Carrier Delivery Proof
+    if not has_carrier:
+        ev04_status = EvidenceStatus.MISSING
+        ev04_contrib = 0.0
+        ev04_val = None
+    elif "EV-004" in conflicted_ev_ids:
+        ev04_status = EvidenceStatus.CONTRADICTED
+        ev04_contrib = 0.0
+        ev04_val = {
+            "carrier_name": payload.carrier_proof.carrier_name,
+            "tracking_number": payload.carrier_proof.tracking_number,
+            "delivered_status": payload.carrier_proof.delivered_status
+        }
+    elif payload.carrier_proof.delivered_status:
+        ev04_status = EvidenceStatus.VERIFIED
+        ev04_contrib = 25.0
+        ev04_val = {
+            "carrier_name": payload.carrier_proof.carrier_name,
+            "tracking_number": payload.carrier_proof.tracking_number,
+            "delivered_status": True
+        }
+    elif payload.carrier_proof.tracking_number:
+        ev04_status = EvidenceStatus.PARTIALLY_VERIFIED
+        ev04_contrib = 10.0
+        ev04_val = {
+            "carrier_name": payload.carrier_proof.carrier_name,
+            "tracking_number": payload.carrier_proof.tracking_number,
+            "delivered_status": False
+        }
+    else:
+        ev04_status = EvidenceStatus.UNVERIFIED
+        ev04_contrib = 0.0
+        ev04_val = None
+    items.append(EvidenceItem(
+        evidence_id="EV-004",
+        evidence_type="CARRIER_DELIVERY_PROOF",
+        status=ev04_status,
+        value=ev04_val,
+        source="logistics_carrier",
+        rule_ids=["RULE-DELIVERY-VERIFIED"],
+        score_contribution=ev04_contrib
+    ))
+
+    # EV-005: Delivery GPS Geolocation
+    if not has_carrier or payload.carrier_proof.gps_latitude is None:
+        ev05_status = EvidenceStatus.MISSING
+        ev05_contrib = 0.0
+        ev05_val = None
+    elif "EV-005" in conflicted_ev_ids:
+        ev05_status = EvidenceStatus.CONTRADICTED
+        ev05_contrib = 0.0
+        ev05_val = {
+            "latitude": payload.carrier_proof.gps_latitude,
+            "longitude": payload.carrier_proof.gps_longitude,
+            "verified_50m": False
+        }
+    elif payload.carrier_proof.verified_gps:
+        ev05_status = EvidenceStatus.VERIFIED
+        ev05_contrib = 15.0
+        ev05_val = {
+            "latitude": payload.carrier_proof.gps_latitude,
+            "longitude": payload.carrier_proof.gps_longitude,
+            "verified_50m": True
+        }
+    else:
+        ev05_status = EvidenceStatus.UNVERIFIED
+        ev05_contrib = 0.0
+        ev05_val = {
+            "latitude": payload.carrier_proof.gps_latitude,
+            "longitude": payload.carrier_proof.gps_longitude,
+            "verified_50m": False
+        }
+    items.append(EvidenceItem(
+        evidence_id="EV-005",
+        evidence_type="GPS_GEOLOCATION",
+        status=ev05_status,
+        value=ev05_val,
+        source="carrier_gps_telemetry",
+        rule_ids=["RULE-GPS-GEOFENCE"],
+        score_contribution=ev05_contrib
+    ))
+
+    # EV-006: Historical Undisputed Orders
+    hist = payload.historical_transactions
+    if not hist:
+        ev06_status = EvidenceStatus.MISSING
+        ev06_contrib = 0.0
+    elif any(h.undisputed for h in hist):
+        ev06_status = EvidenceStatus.VERIFIED
+        ev06_contrib = 20.0
+    else:
+        ev06_status = EvidenceStatus.UNVERIFIED
+        ev06_contrib = 0.0
+    items.append(EvidenceItem(
+        evidence_id="EV-006",
+        evidence_type="HISTORICAL_ORDERS",
+        status=ev06_status,
+        value=len(hist),
+        source="core_ledger_history",
+        rule_ids=["RULE-CE30-COMPLIANCE", "RULE-FPT-COMPLIANCE"],
+        score_contribution=ev06_contrib
+    ))
+
+    # EV-007: Digital Access Logs
+    if not has_digital:
+        ev07_status = EvidenceStatus.MISSING
+        ev07_contrib = 0.0
+        ev07_val = None
+    elif "EV-007" in conflicted_ev_ids:
+        ev07_status = EvidenceStatus.CONTRADICTED
+        ev07_contrib = 0.0
+        ev07_val = {
+            "access_logs_verified": payload.digital_proof.access_logs_verified,
+            "user_account_active": payload.digital_proof.user_account_active
+        }
+    elif payload.digital_proof.access_logs_verified and payload.digital_proof.user_account_active:
+        ev07_status = EvidenceStatus.VERIFIED
+        ev07_contrib = 20.0
+        ev07_val = {
+            "access_logs_verified": True,
+            "user_account_active": True
+        }
+    elif payload.digital_proof.access_logs_verified:
+        ev07_status = EvidenceStatus.PARTIALLY_VERIFIED
+        ev07_contrib = 10.0
+        ev07_val = {
+            "access_logs_verified": True,
+            "user_account_active": False
+        }
+    else:
+        ev07_status = EvidenceStatus.UNVERIFIED
+        ev07_contrib = 0.0
+        ev07_val = None
+    items.append(EvidenceItem(
+        evidence_id="EV-007",
+        evidence_type="DIGITAL_ACCESS_LOGS",
+        status=ev07_status,
+        value=ev07_val,
+        source="saas_application_telemetry",
+        rule_ids=["RULE-DIGITAL-ACCESS"],
+        score_contribution=ev07_contrib
+    ))
+
+    statuses = {item.evidence_type: item.status for item in items}
+    return items, contradictions, statuses
+
+
+def calculate_hitl_priority(
+    payload: DisputePayload,
+    confidence_score: float,
+    estimated_win_probability: Optional[float],
+    has_contradictions: bool
+) -> Tuple[float, str, Dict[str, float]]:
+    """
+    Calculates Human-in-the-Loop triage priority score [0.0 - 100.0] and urgency level.
+    Handles missing deadlines, active deadlines, and overdue deadlines:
+    - Overdue (due_by <= now): 50 pts (critical) - ranks ABOVE <6h
+    - Urgent (<6h): 40 pts (critical)
+    - Warning (<24h): 25 pts (urgent)
+    - Normal (>24h or missing): 5 pts (normal)
+    Plus amount factor (up to 30 pts), uncertainty factor (up to 20 pts),
+    and contradiction boost (15 pts).
+    """
+    now = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+    due_by = payload.due_by
+
+    if due_by is not None:
+        hours_left = (due_by - now) / 3600.0
+        if hours_left <= 0:
+            deadline_score = 50.0
+            urgency = "critical"
+        elif hours_left <= 6.0:
+            deadline_score = 40.0
+            urgency = "critical"
+        elif hours_left <= 24.0:
+            deadline_score = 25.0
+            urgency = "urgent"
+        else:
+            deadline_score = 5.0
+            urgency = "normal"
+    else:
+        deadline_score = 5.0
+        urgency = "normal"
+
+    amount = payload.amount_inr or 1000.0
+    amount_score = min(30.0, round((amount / 10000.0) * 30.0, 2))
+
+    p = estimated_win_probability if estimated_win_probability is not None else 0.5
+    uncertainty_score = round((1.0 - 2.0 * abs(p - 0.5)) * 20.0, 2)
+
+    contradiction_boost = 15.0 if has_contradictions else 0.0
+    if has_contradictions and urgency == "normal":
+        urgency = "urgent"
+
+    total = min(100.0, round(deadline_score + amount_score + uncertainty_score + contradiction_boost, 1))
+    factors = {
+        "deadline_score": deadline_score,
+        "amount_score": amount_score,
+        "uncertainty_score": uncertainty_score,
+        "contradiction_boost": contradiction_boost
+    }
+    return total, urgency, factors
+
+
 def compliance_agent_node(state: DisputeState) -> DisputeState:
     """
     Compliance & Formation Engine Agent:
     Executes Visa CE 3.0 / Mastercard FPT deterministic evaluation or Non-Fraud RAG rules.
+    Derives existing booleans from central EvidenceStatus.
     """
     payload = state["payload"]
     dispute_id = state["dispute_id"]
     reason_code = str(payload.reason_code).strip()
+
+    # Extract central evidence items, contradictions, and statuses
+    items, contradictions, statuses = extract_evidence_and_contradictions(payload)
+    
+    # Derive booleans strictly from EvidenceStatus.VERIFIED
+    carrier_verified = (statuses.get("CARRIER_DELIVERY_PROOF") == EvidenceStatus.VERIFIED)
+    gps_verified = (statuses.get("GPS_GEOLOCATION") == EvidenceStatus.VERIFIED)
+    mfa_verified = (statuses.get("PAYMENT_AUTHENTICATION") == EvidenceStatus.VERIFIED)
+    digital_verified = (statuses.get("DIGITAL_ACCESS_LOGS") == EvidenceStatus.VERIFIED)
     
     if reason_code in ("13.1", "13.7", "4853", "4855"):
         # Non-Fraud Merchandise / Cancellation RAG flow
@@ -149,20 +475,38 @@ def compliance_agent_node(state: DisputeState) -> DisputeState:
             ce30_compliant=False,
             fpt_compliant=False,
             qualifying_orders_count=len(payload.historical_transactions),
-            carrier_verified=payload.carrier_proof is not None and payload.carrier_proof.delivered_status,
-            digital_verified=payload.digital_proof is not None and payload.digital_proof.access_logs_verified,
-            gps_verified=payload.carrier_proof is not None and payload.carrier_proof.verified_gps,
-            mfa_verified=payload.telemetry.mfa_authenticated if payload.telemetry else False,
+            carrier_verified=carrier_verified,
+            digital_verified=digital_verified,
+            gps_verified=gps_verified,
+            mfa_verified=mfa_verified,
             confidence_score=score,
-            route_decision="AUTO_DISPATCH" if score >= 70.0 else "ROUTE_TO_HITL_QUEUE",
+            route_decision="AUTO_DISPATCH" if (score >= 70.0 and not contradictions) else "ROUTE_TO_HITL_QUEUE",
             diagnostic_gaps=gaps,
             score_breakdown=breakdown,
-            evidence_category=category
+            evidence_category=category,
+            evidence_items=items,
+            contradictions=contradictions,
+            evidence_statuses=statuses
         )
     else:
         # Standard Visa CE 3.0 / Mastercard FPT rule evaluation
         evaluation = evaluate_dispute_compliance(payload)
         evaluation.evidence_category = "FRAUD_CE30_FPT"
+        evaluation.carrier_verified = carrier_verified
+        evaluation.digital_verified = digital_verified
+        evaluation.gps_verified = gps_verified
+        evaluation.mfa_verified = mfa_verified
+        evaluation.evidence_items = items
+        evaluation.contradictions = contradictions
+        evaluation.evidence_statuses = statuses
+
+    # If contradictions exist, force route to HITL queue and prepend diagnostic gaps
+    if contradictions:
+        evaluation.route_decision = "ROUTE_TO_HITL_QUEUE"
+        for c in contradictions:
+            conflict_msg = f"[CONTRADICTION] {c.description}"
+            if conflict_msg not in evaluation.diagnostic_gaps:
+                evaluation.diagnostic_gaps.insert(0, conflict_msg)
 
     ledger.append_block(
         agent_id="AGENT_COMPLIANCE",
@@ -173,7 +517,8 @@ def compliance_agent_node(state: DisputeState) -> DisputeState:
             "ce30_compliant": evaluation.ce30_compliant,
             "fpt_compliant": evaluation.fpt_compliant,
             "category": evaluation.evidence_category,
-            "gaps": evaluation.diagnostic_gaps
+            "gaps": evaluation.diagnostic_gaps,
+            "contradictions_count": len(contradictions)
         }
     )
 
@@ -181,12 +526,12 @@ def compliance_agent_node(state: DisputeState) -> DisputeState:
         dispute_id=dispute_id,
         event_type="RULES_EVALUATED",
         title=f"{payload.card_network.upper()} Rules Evaluated",
-        description=f"Rule {evaluation.reason_code} evaluated. Confidence Score: {evaluation.confidence_score}/100.0 ({evaluation.evidence_category}).",
-        metadata={"confidence_score": evaluation.confidence_score, "category": evaluation.evidence_category}
+        description=f"Rule {evaluation.reason_code} evaluated. Confidence Score: {evaluation.confidence_score}/100.0 ({evaluation.evidence_category}). Contradictions: {len(contradictions)}.",
+        metadata={"confidence_score": evaluation.confidence_score, "category": evaluation.evidence_category, "contradictions": len(contradictions)}
     )
     
     logs = state.get("logs", [])
-    logs.append(f"Compliance evaluated: Score Sc={evaluation.confidence_score}/100.0 ({evaluation.evidence_category})")
+    logs.append(f"Compliance evaluated: Score Sc={evaluation.confidence_score}/100.0 ({evaluation.evidence_category}), Contradictions={len(contradictions)}")
     
     return {
         **state,
@@ -199,7 +544,7 @@ def economic_engine_agent_node(state: DisputeState) -> DisputeState:
     """
     Dynamic Expected Value (E[V]) & Rebuttal Synthesis Agent:
     Computes Net Recovery E[V] = P(win|x)*A - (1-P(win|x))*F_fee - C_op,
-    synthesizes constrained rebuttal letter, and sets economic decision.
+    synthesizes constrained rebuttal letter with EvidenceItem citations, and sets economic decision.
     """
     payload = state["payload"]
     evaluation = state["evaluation"]
@@ -219,20 +564,35 @@ def economic_engine_agent_node(state: DisputeState) -> DisputeState:
         issuer_adjustment=issuer_adj
     )
 
-    # Synthesize constrained RAG rebuttal letter
+    # Synthesize constrained RAG rebuttal letter using canonical EvidenceItems
     rebuttal = rag_synthesizer.synthesize_rebuttal(
         payload=payload,
         confidence_score=evaluation.confidence_score,
-        p_win=ev_result.p_win
+        p_win=ev_result.estimated_win_probability,
+        evidence_items=evaluation.evidence_items
     )
 
-    # Update evaluation with economic data
-    evaluation.p_win = ev_result.p_win
+    # Link supports_claim_ids back to canonical evidence_items
+    for cl in rebuttal.claims:
+        for ev_id in cl.supported_by:
+            for item in evaluation.evidence_items:
+                if item.evidence_id == ev_id and cl.claim_id not in item.supports_claim_ids:
+                    item.supports_claim_ids.append(cl.claim_id)
+
+    # If contradictions exist, force route to HITL queue
+    if evaluation.contradictions:
+        final_decision = "ROUTE_TO_HITL_QUEUE"
+    else:
+        final_decision = ev_result.decision
+
+    # Update evaluation with canonical economic data
+    evaluation.estimated_win_probability = ev_result.estimated_win_probability
+    evaluation.p_win = ev_result.estimated_win_probability
     evaluation.expected_value_inr = ev_result.expected_value_inr
     evaluation.issuer_fee_inr = ev_result.issuer_fee_inr
     evaluation.operational_cost_inr = ev_result.operational_cost_inr
-    evaluation.economic_decision = ev_result.decision
-    evaluation.route_decision = ev_result.decision
+    evaluation.economic_decision = final_decision
+    evaluation.route_decision = final_decision
     evaluation.rebuttal_letter = rebuttal.model_dump()
 
     ledger.append_block(
@@ -241,8 +601,9 @@ def economic_engine_agent_node(state: DisputeState) -> DisputeState:
         payload={
             "dispute_id": payload.dispute_id,
             "expected_value_inr": ev_result.expected_value_inr,
-            "p_win": ev_result.p_win,
-            "economic_decision": ev_result.decision,
+            "estimated_win_probability": ev_result.estimated_win_probability,
+            "p_win": ev_result.estimated_win_probability,
+            "economic_decision": final_decision,
             "is_profitable": ev_result.is_profitable
         }
     )
@@ -251,13 +612,13 @@ def economic_engine_agent_node(state: DisputeState) -> DisputeState:
         dispute_id=payload.dispute_id,
         event_type="ECONOMIC_EVALUATED",
         title="Expected Value Computed",
-        description=f"Computed E[V]: ₹{ev_result.expected_value_inr:,.2f} with P(win): {ev_result.p_win*100:.1f}%. Decision: {ev_result.decision}.",
-        metadata={"expected_value_inr": ev_result.expected_value_inr, "p_win": ev_result.p_win, "decision": ev_result.decision}
+        description=f"Computed E[V]: ₹{ev_result.expected_value_inr:,.2f} with P(win): {ev_result.estimated_win_probability*100:.1f}%. Decision: {final_decision}.",
+        metadata={"expected_value_inr": ev_result.expected_value_inr, "p_win": ev_result.estimated_win_probability, "decision": final_decision}
     )
 
     logs = state.get("logs", [])
     logs.append(
-        f"Economic E[V] Computed: E[V]=₹{ev_result.expected_value_inr:,.2f}, P(win)={ev_result.p_win*100:.1f}% -> Decision={ev_result.decision}"
+        f"Economic E[V] Computed: E[V]=₹{ev_result.expected_value_inr:,.2f}, P(win)={ev_result.estimated_win_probability*100:.1f}% -> Decision={final_decision}"
     )
 
     return {
@@ -265,7 +626,7 @@ def economic_engine_agent_node(state: DisputeState) -> DisputeState:
         "evaluation": evaluation,
         "expected_value": ev_result,
         "rebuttal_letter": rebuttal.model_dump(),
-        "decision": ev_result.decision,
+        "decision": final_decision,
         "logs": logs
     }
 
@@ -273,16 +634,20 @@ def economic_engine_agent_node(state: DisputeState) -> DisputeState:
 def gatekeeper_router(state: DisputeState) -> str:
     """
     3-Tier Gatekeeper Router based on Dynamic Expected Value & P(win):
-    - E[V] > 0 & P(win) >= 0.70  --> auto_dispatch_agent
-    - E[V] > 0 & 0.40 <= P < 0.70 --> hitl_queue_agent
-    - E[V] <= 0                   --> auto_accept_agent
+    - Any active contradiction           --> hitl_queue_agent
+    - E[V] > 0 & P(win) >= 0.70          --> auto_dispatch_agent
+    - E[V] > 0 & 0.40 <= P < 0.70        --> hitl_queue_agent
+    - E[V] <= 0                          --> auto_accept_agent
     """
+    if state.get("evaluation") and state["evaluation"].contradictions:
+        return "hitl_queue_agent"
     decision = state.get("decision")
-    if decision == "AUTO_SUBMIT_REPRESENTMENT" or decision == "AUTO_DISPATCH":
+    if decision == "AUTO_SUBMIT_REPRESENTMENT" or decision == "AUTO_DISPATCH" or decision == "AUTO_DISPATCHED":
         return "auto_dispatch_agent"
     elif decision == "AUTO_ACCEPT_OR_REFUND":
         return "auto_accept_agent"
     return "hitl_queue_agent"
+
 
 
 def _create_dossier(state: DisputeState, decision: str, summary: str, sealed_hash: str, timestamp: str) -> Dossier:
@@ -367,12 +732,23 @@ def _create_dossier(state: DisputeState, decision: str, summary: str, sealed_has
     if not mfa_auth:
         negative_factors.append("No 3DS/MFA authentication recorded at checkout (merchant liability)")
 
-    p_win = ev_result.p_win if ev_result else (evaluation.p_win or 0.0)
+    p_win = ev_result.estimated_win_probability if ev_result else (evaluation.estimated_win_probability or evaluation.p_win or 0.0)
     ev_inr = ev_result.expected_value_inr if ev_result else (evaluation.expected_value_inr or 0.0)
+
+    has_contradictions = len(evaluation.contradictions) > 0 if evaluation else False
+    priority_score, urgency, priority_factors = calculate_hitl_priority(
+        payload=payload,
+        confidence_score=evaluation.confidence_score if evaluation else 0.0,
+        estimated_win_probability=p_win,
+        has_contradictions=has_contradictions
+    )
 
     recommendation = "Submit automated representment package immediately"
     if decision == "ROUTE_TO_HITL_QUEUE":
-        recommendation = "Route to human analyst review queue to resolve identified evidence gaps"
+        if has_contradictions:
+            recommendation = "Route to human analyst review queue to resolve identified evidence contradictions"
+        else:
+            recommendation = "Route to human analyst review queue to resolve identified evidence gaps"
     elif decision == "AUTO_ACCEPT_OR_REFUND":
         recommendation = "Accept dispute or refund to prevent non-refundable issuer arbitration fees"
 
@@ -382,6 +758,7 @@ def _create_dossier(state: DisputeState, decision: str, summary: str, sealed_has
         top_negative_factors=negative_factors,
         confidence_breakdown=evaluation.score_breakdown or {},
         rule_applied=f"{evaluation.network.upper()} {evaluation.reason_code} ({evaluation.evidence_category})",
+        estimated_win_probability=p_win,
         win_probability=p_win,
         expected_value_inr=ev_inr,
         recommendation=recommendation
@@ -391,10 +768,11 @@ def _create_dossier(state: DisputeState, decision: str, summary: str, sealed_has
     if ev_result:
         ev_breakdown_dict = {
             "amount_inr": amount,
-            "p_win": ev_result.p_win,
-            "gross_recovery": round(ev_result.p_win * amount, 2),
+            "estimated_win_probability": ev_result.estimated_win_probability,
+            "p_win": ev_result.estimated_win_probability,
+            "gross_recovery": round(ev_result.estimated_win_probability * amount, 2),
             "issuer_fee_inr": ev_result.issuer_fee_inr,
-            "risk_adjusted_fee": round((1.0 - ev_result.p_win) * ev_result.issuer_fee_inr, 2),
+            "risk_adjusted_fee": round((1.0 - ev_result.estimated_win_probability) * ev_result.issuer_fee_inr, 2),
             "operational_cost_inr": ev_result.operational_cost_inr,
             "expected_value_inr": ev_result.expected_value_inr,
             "is_profitable": ev_result.is_profitable
@@ -416,24 +794,34 @@ def _create_dossier(state: DisputeState, decision: str, summary: str, sealed_has
         digital_proof=payload.digital_proof,
         historical_count=len(payload.historical_transactions),
         summary=summary,
-        expected_value_inr=ev_inr,
+        # Central Evidence Items & Semantics
+        evidence_items=evaluation.evidence_items if evaluation else [],
+        evidence_statuses=evaluation.evidence_statuses if evaluation else {},
+        contradictions=evaluation.contradictions if evaluation else [],
+        # Probability & Economic Fields
+        estimated_win_probability=p_win,
         p_win=p_win,
+        win_probability=p_win,
+        expected_value=ev_inr,
+        expected_value_inr=ev_inr,
+        ev_breakdown=ev_breakdown_dict,
         rebuttal_letter=state.get("rebuttal_letter"),
         # Evidence Intelligence
         payment_authentication=payment_auth_str,
         delivery_proof=delivery_proof_dict,
         gps_verification=gps_verification_dict,
         mfa_verification=mfa_auth,
-        ip_address=payload.telemetry.ip_address if payload.telemetry else "127.0.0.1",
+        ip_address=payload.telemetry.ip_address if payload.telemetry else None,
         device_info=device_info_dict,
         customer_history_summary=history_summary_dict,
         digital_access_logs=digital_access_dict,
         # Explainability & HITL
         decision_explanation=explanation,
         assigned_to=None,
-        win_probability=p_win,
-        expected_value=ev_inr,
-        ev_breakdown=ev_breakdown_dict
+        due_by=payload.due_by,
+        priority_score=priority_score,
+        urgency=urgency,
+        priority_factors=priority_factors
     )
 
 
@@ -619,52 +1007,9 @@ def auto_accept_agent_node(state: DisputeState) -> DisputeState:
     }
 
 
-def build_dispute_graph():
-    """
-    Builds and compiles the LangGraph state machine workflow with E[V] decisioning.
-    """
-    if not LANGGRAPH_AVAILABLE:
-        return None
-        
-    workflow = StateGraph(DisputeState)
-    
-    workflow.add_node("triage_agent", triage_agent_node)
-    workflow.add_node("aggregator_agent", aggregator_agent_node)
-    workflow.add_node("compliance_agent", compliance_agent_node)
-    workflow.add_node("economic_engine_agent", economic_engine_agent_node)
-    workflow.add_node("auto_dispatch_agent", auto_dispatch_agent_node)
-    workflow.add_node("hitl_queue_agent", hitl_queue_agent_node)
-    workflow.add_node("auto_accept_agent", auto_accept_agent_node)
-    
-    workflow.set_entry_point("triage_agent")
-    workflow.add_edge("triage_agent", "aggregator_agent")
-    workflow.add_edge("aggregator_agent", "compliance_agent")
-    workflow.add_edge("compliance_agent", "economic_engine_agent")
-    
-    workflow.add_conditional_edges(
-        "economic_engine_agent",
-        gatekeeper_router,
-        {
-            "auto_dispatch_agent": "auto_dispatch_agent",
-            "hitl_queue_agent": "hitl_queue_agent",
-            "auto_accept_agent": "auto_accept_agent"
-        }
-    )
-    
-    workflow.add_edge("auto_dispatch_agent", END)
-    workflow.add_edge("hitl_queue_agent", END)
-    workflow.add_edge("auto_accept_agent", END)
-    
-    return workflow.compile()
-
-
-compiled_dispute_graph = build_dispute_graph()
-
-
 def execute_dispute_workflow(payload: DisputePayload) -> Dossier:
     """
-    Executes the full dispute defense pipeline. Uses LangGraph if compiled,
-    otherwise deterministic sequential fallback.
+    Executes the full dispute defense pipeline via deterministic sequential agents.
     """
     initial_state: DisputeState = {
         "payload": payload,
@@ -674,15 +1019,8 @@ def execute_dispute_workflow(payload: DisputePayload) -> Dossier:
         "amount_inr": payload.amount_inr or 1000.0,
         "logs": []
     }
-    
-    if compiled_dispute_graph is not None:
-        try:
-            final_state = compiled_dispute_graph.invoke(initial_state)
-            return final_state["dossier"]
-        except Exception:
-            pass  # fallback to deterministic steps
 
-    # Deterministic fallback pipeline
+    # Deterministic pipeline
     s1 = triage_agent_node(initial_state)
     s2 = aggregator_agent_node(s1)
     s3 = compliance_agent_node(s2)
@@ -694,5 +1032,6 @@ def execute_dispute_workflow(payload: DisputePayload) -> Dossier:
         s5 = auto_accept_agent_node(s4)
     else:
         s5 = hitl_queue_agent_node(s4)
-        
+
     return s5["dossier"]
+

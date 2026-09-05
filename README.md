@@ -4,7 +4,7 @@
 
 [![Vercel Deployment](https://img.shields.io/badge/Vercel-Serverless%20Python-black?logo=vercel)](https://vercel.com)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-009688?logo=fastapi)](https://fastapi.tiangolo.com)
-[![LangGraph](https://img.shields.io/badge/LangGraph-Deterministic%20Workflow-orange)](https://github.com/langchain-ai/langgraph)
+[![State Machine](https://img.shields.io/badge/Python-Deterministic%20Workflow-blue)](https://python.org)
 [![Security](https://img.shields.io/badge/HMAC--SHA256-Constant--Time-brightgreen)](#cryptographic-security)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 

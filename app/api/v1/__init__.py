@@ -7,6 +7,7 @@ from app.api.v1.endpoints.timeline import router as timeline_router
 from app.api.v1.endpoints.packages import router as packages_router
 from app.api.v1.endpoints.review import router as review_router
 from app.api.v1.endpoints.rules import router as rules_router
+from app.api.v1.endpoints.provenance import router as provenance_router
 
 api_v1_router = APIRouter(prefix="/api/v1")
 api_v1_router.include_router(webhooks_router)
@@ -17,6 +18,7 @@ api_v1_router.include_router(timeline_router)
 api_v1_router.include_router(packages_router)
 api_v1_router.include_router(review_router)
 api_v1_router.include_router(rules_router)
+api_v1_router.include_router(provenance_router)
 
 __all__ = ["api_v1_router"]
 

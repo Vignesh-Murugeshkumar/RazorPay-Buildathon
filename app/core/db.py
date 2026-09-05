@@ -3,7 +3,7 @@ import json
 import sqlite3
 import threading
 from contextlib import contextmanager
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from app.schemas.dispute import Dossier, RazorpayDisputeWebhook
 from app.services.ledger import LedgerBlock
 from app.core.logger import get_logger
@@ -160,7 +160,11 @@ class DatabaseManager:
                                 CREATE TABLE IF NOT EXISTS processed_events (
                                     event_id VARCHAR PRIMARY KEY,
                                     signature VARCHAR,
-                                    received_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                                    status VARCHAR(32) NOT NULL DEFAULT 'RECEIVED',
+                                    result_json JSONB,
+                                    error_message TEXT,
+                                    received_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                                 );
 
                                 CREATE TABLE IF NOT EXISTS customer_telemetry (
@@ -277,9 +281,25 @@ class DatabaseManager:
                     CREATE TABLE IF NOT EXISTS processed_events (
                         event_id TEXT PRIMARY KEY,
                         signature TEXT,
-                        received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        status TEXT NOT NULL DEFAULT 'RECEIVED',
+                        result_json TEXT,
+                        error_message TEXT,
+                        received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
+                # Migrations for existing tables
+                for col_def in [
+                    "status TEXT NOT NULL DEFAULT 'RECEIVED'",
+                    "result_json TEXT",
+                    "error_message TEXT",
+                    "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                ]:
+                    try:
+                        col_name = col_def.split()[0]
+                        cur.execute(f"ALTER TABLE processed_events ADD COLUMN {col_def}")
+                    except Exception:
+                        pass
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS customer_telemetry (
                         id TEXT PRIMARY KEY,
@@ -737,11 +757,15 @@ class DatabaseManager:
                 logger.error("Error clearing SQLite DB", error=str(e))
 
 
-    # ------------------ REPLAY GUARD / NONCES ------------------
-    def record_and_verify_event(self, event_id: str, signature: str) -> bool:
+    # ------------------ REPLAY GUARD & ATOMIC EVENT LIFECYCLE ------------------
+    def register_webhook_event(self, event_id: str, signature: str) -> Tuple[str, Optional[Dict[str, Any]]]:
         """
-        Records an incoming event ID / signature.
-        Returns True if fresh/new, False if it was already processed (replay detected).
+        Atomically inspects and registers incoming webhook events in the persistence layer.
+        Lifecycle states: RECEIVED -> PROCESSING -> COMPLETED | FAILED
+        Returns:
+            ("PROCEED", None) - Event claimed as PROCESSING; safe to execute workflow.
+            ("COMPLETED", cached_result) - Event already completed; return cached 200 payload.
+            ("PROCESSING", None) - Event currently executing concurrently in another worker.
         """
         with self._lock:
             if self._is_postgres:
@@ -749,36 +773,174 @@ class DatabaseManager:
                     from psycopg.rows import dict_row
                     with self._get_pg_conn(row_factory=dict_row) as conn:
                         with conn.cursor() as cur:
-                            cur.execute("SELECT event_id FROM processed_events WHERE event_id = %s", (event_id,))
-                            if cur.fetchone() is not None:
-                                return False
+                            # 1. Attempt atomic insert to claim PROCESSING state
                             cur.execute(
-                                "INSERT INTO processed_events (event_id, signature) VALUES (%s, %s)",
+                                """
+                                INSERT INTO processed_events (event_id, signature, status)
+                                VALUES (%s, %s, 'PROCESSING')
+                                ON CONFLICT (event_id) DO NOTHING
+                                RETURNING event_id;
+                                """,
                                 (event_id, signature)
                             )
-                            return True
-                except Exception as e:
-                    logger.error("Error checking processed event in Supabase", event_id=event_id, error=str(e))
+                            claimed = cur.fetchone()
+                            if claimed is not None:
+                                return "PROCEED", None
 
-            # SQLite fallback
+                            # 2. Row exists; inspect state under row-level lock
+                            cur.execute(
+                                "SELECT status, result_json FROM processed_events WHERE event_id = %s FOR UPDATE",
+                                (event_id,)
+                            )
+                            existing = cur.fetchone()
+                            if not existing:
+                                return "PROCEED", None
+
+                            st = existing.get("status", "COMPLETED")
+                            if st == "COMPLETED":
+                                res = existing.get("result_json")
+                                if isinstance(res, str):
+                                    try:
+                                        res = json.loads(res)
+                                    except Exception:
+                                        pass
+                                return "COMPLETED", res if isinstance(res, dict) else {}
+                            elif st == "PROCESSING":
+                                return "PROCESSING", None
+                            elif st == "FAILED":
+                                # Safely reclaim failed event for reprocessing
+                                cur.execute(
+                                    """
+                                    UPDATE processed_events
+                                    SET status = 'PROCESSING', updated_at = CURRENT_TIMESTAMP, error_message = NULL
+                                    WHERE event_id = %s AND status = 'FAILED'
+                                    RETURNING event_id;
+                                    """,
+                                    (event_id,)
+                                )
+                                if cur.fetchone():
+                                    return "PROCEED", None
+                                return "PROCESSING", None
+                            return "PROCESSING", None
+                except Exception as e:
+                    logger.error("Error in Supabase register_webhook_event", event_id=event_id, error=str(e))
+
+            # SQLite fallback (thread-safe and transaction-isolated)
             try:
                 conn = sqlite3.connect(SQLITE_DB_PATH, check_same_thread=False, timeout=15.0)
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
-                cur.execute("SELECT event_id FROM processed_events WHERE event_id = ?", (event_id,))
-                if cur.fetchone() is not None:
+                try:
+                    cur.execute("BEGIN IMMEDIATE")
+                    cur.execute("SELECT status, result_json FROM processed_events WHERE event_id = ?", (event_id,))
+                    existing = cur.fetchone()
+                    if existing is None:
+                        cur.execute(
+                            "INSERT INTO processed_events (event_id, signature, status) VALUES (?, ?, 'PROCESSING')",
+                            (event_id, signature)
+                        )
+                        conn.commit()
+                        return "PROCEED", None
+
+                    st = existing["status"]
+                    if st == "COMPLETED":
+                        res_raw = existing["result_json"]
+                        res = json.loads(res_raw) if res_raw else {}
+                        conn.commit()
+                        return "COMPLETED", res
+                    elif st == "PROCESSING":
+                        conn.commit()
+                        return "PROCESSING", None
+                    elif st == "FAILED":
+                        cur.execute(
+                            "UPDATE processed_events SET status = 'PROCESSING', updated_at = CURRENT_TIMESTAMP, error_message = NULL WHERE event_id = ? AND status = 'FAILED'",
+                            (event_id,)
+                        )
+                        conn.commit()
+                        return "PROCEED", None
+                    conn.commit()
+                    return "PROCESSING", None
+                finally:
                     conn.close()
-                    return False
+            except Exception as e:
+                logger.error("Error in SQLite register_webhook_event", error=str(e))
+                return "PROCEED", None
+
+    def complete_webhook_event(self, event_id: str, result_payload: Dict[str, Any]) -> bool:
+        """Marks event as COMPLETED and caches result for idempotent replay."""
+        with self._lock:
+            payload_str = json.dumps(result_payload)
+            if self._is_postgres:
+                try:
+                    with self._get_pg_conn() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                """
+                                UPDATE processed_events
+                                SET status = 'COMPLETED', result_json = %s, updated_at = CURRENT_TIMESTAMP
+                                WHERE event_id = %s
+                                """,
+                                (payload_str, event_id)
+                            )
+                            return True
+                except Exception as e:
+                    logger.error("Error completing Postgres webhook event", event_id=event_id, error=str(e))
+
+            try:
+                conn = sqlite3.connect(SQLITE_DB_PATH, check_same_thread=False, timeout=15.0)
+                cur = conn.cursor()
                 cur.execute(
-                    "INSERT INTO processed_events (event_id, signature) VALUES (?, ?)",
-                    (event_id, signature)
+                    "UPDATE processed_events SET status = 'COMPLETED', result_json = ?, updated_at = CURRENT_TIMESTAMP WHERE event_id = ?",
+                    (payload_str, event_id)
                 )
                 conn.commit()
                 conn.close()
                 return True
             except Exception as e:
-                logger.error("Error in SQLite record_and_verify_event", error=str(e))
+                logger.error("Error completing SQLite webhook event", event_id=event_id, error=str(e))
+                return False
+
+    def fail_webhook_event(self, event_id: str, error_message: str) -> bool:
+        """Marks event as FAILED with error detail to allow safe debugging and retry."""
+        with self._lock:
+            if self._is_postgres:
+                try:
+                    with self._get_pg_conn() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                """
+                                UPDATE processed_events
+                                SET status = 'FAILED', error_message = %s, updated_at = CURRENT_TIMESTAMP
+                                WHERE event_id = %s
+                                """,
+                                (error_message[:1000], event_id)
+                            )
+                            return True
+                except Exception as e:
+                    logger.error("Error failing Postgres webhook event", event_id=event_id, error=str(e))
+
+            try:
+                conn = sqlite3.connect(SQLITE_DB_PATH, check_same_thread=False, timeout=15.0)
+                cur = conn.cursor()
+                cur.execute(
+                    "UPDATE processed_events SET status = 'FAILED', error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE event_id = ?",
+                    (error_message[:1000], event_id)
+                )
+                conn.commit()
+                conn.close()
                 return True
+            except Exception as e:
+                logger.error("Error failing SQLite webhook event", event_id=event_id, error=str(e))
+                return False
+
+    def record_and_verify_event(self, event_id: str, signature: str) -> bool:
+        """
+        Legacy boolean compatibility wrapper for replay detection tests.
+        Returns True if fresh/new, False if duplicate/replaying.
+        """
+        action, _ = self.register_webhook_event(event_id, signature)
+        return action == "PROCEED"
+
 
     # ------------------ TELEMETRY COLD STORAGE ------------------
     def insert_customer_telemetry(
@@ -1132,6 +1294,14 @@ class DatabaseManager:
                 (d.confidence_score < 75.0 and d.decision != "AUTO_ACCEPT_OR_REFUND")
             )
             if is_hitl:
+                p_win = (
+                    d.estimated_win_probability if d.estimated_win_probability is not None
+                    else (d.win_probability if d.win_probability is not None else (d.p_win or 0.0))
+                )
+                ev_val = (
+                    d.expected_value if d.expected_value is not None
+                    else (d.expected_value_inr or 0.0)
+                )
                 queue.append({
                     "dispute_id": d.dispute_id,
                     "payment_id": d.payment_id,
@@ -1140,15 +1310,23 @@ class DatabaseManager:
                     "reason_code": d.reason_code,
                     "confidence_score": d.confidence_score,
                     "decision": d.decision,
-                    "win_probability": d.win_probability if d.win_probability is not None else d.p_win,
-                    "expected_value_inr": d.expected_value_inr,
+                    "estimated_win_probability": p_win,
+                    "win_probability": p_win,
+                    "expected_value_inr": ev_val,
                     "assigned_to": d.assigned_to,
                     "timestamp": d.timestamp,
                     "diagnostic_gaps": d.evaluation.diagnostic_gaps if d.evaluation else [],
-                    "summary": d.summary
+                    "summary": d.summary,
+                    "due_by": getattr(d, "due_by", None),
+                    "priority_score": getattr(d, "priority_score", 0.0),
+                    "urgency": getattr(d, "urgency", "normal"),
+                    "contradictions": [c.model_dump() if hasattr(c, "model_dump") else c for c in getattr(d, "contradictions", [])],
+                    "priority_factors": getattr(d, "priority_factors", {})
                 })
-        queue.sort(key=lambda x: x["timestamp"], reverse=True)
+        # Sort primarily by priority_score DESC, then timestamp DESC
+        queue.sort(key=lambda x: (x.get("priority_score", 0.0), x.get("timestamp", "")), reverse=True)
         return queue
+
 
     # ------------------ DASHBOARD AGGREGATION ------------------
     def get_dashboard_summary(self) -> Dict[str, Any]:

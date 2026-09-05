@@ -290,7 +290,7 @@ def test_step6_issuer_intelligence_closed_loop():
     issuer_intelligence.record_dispute_resolution(
         dispute_id="disp_res_001",
         card_bin=bin_num,
-        issuing_bank="HDFC Bank",
+        issuing_bank="Synthetic Issuer A",
         network="visa",
         reason_code="10.4",
         outcome="won",
@@ -311,7 +311,7 @@ def test_step6_issuer_intelligence_closed_loop():
 # END-TO-END WORKFLOW INTEGRATION TEST
 # ==============================================================================
 def test_full_roadmap_end_to_end_dispute_workflow():
-    """Runs complete end-to-end LangGraph state machine with all roadmap features."""
+    """Runs complete end-to-end deterministic state machine with all roadmap features."""
     now = time.time()
     payload = RazorpayDisputeWebhook(
         dispute_id="disp_e2e_roadmap_001",

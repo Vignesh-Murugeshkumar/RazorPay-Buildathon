@@ -8,7 +8,7 @@ from app.schemas.dispute import (
 
 class DisputeState(TypedDict, total=False):
     """
-    TypedDict state schema governing the deterministic LangGraph agent state machine.
+    TypedDict state schema governing the deterministic Python agent state machine.
     Passed across Triage, Aggregator, Compliance, and Gatekeeper nodes.
     """
     # Ingress & Core Identifiers

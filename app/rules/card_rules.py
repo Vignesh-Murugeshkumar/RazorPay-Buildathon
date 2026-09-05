@@ -62,12 +62,12 @@ def evaluate_visa_ce30(
     orders_to_check = qualifying_orders[:2]
     
     # 2. Check 4 core identifiers across dispute telemetry and qualifying historical orders
-    curr_ip = normalize_str(payload.telemetry.ip_address)
-    curr_device = normalize_str(payload.telemetry.device_id)
-    curr_user = normalize_str(payload.telemetry.user_id)
-    curr_addr = normalize_str(payload.telemetry.shipping_address)
+    curr_ip = normalize_str(payload.telemetry.ip_address) if payload.telemetry else ""
+    curr_device = normalize_str(payload.telemetry.device_id) if payload.telemetry else ""
+    curr_user = normalize_str(payload.telemetry.user_id) if payload.telemetry else ""
+    curr_addr = normalize_str(payload.telemetry.shipping_address) if payload.telemetry else ""
     
-    ip_matches = all(is_ip_or_subnet_match(tx.ip_address, curr_ip) for tx in orders_to_check)
+    ip_matches = all(is_ip_or_subnet_match(tx.ip_address, curr_ip) for tx in orders_to_check) if curr_ip else False
     device_matches = all(normalize_str(tx.device_id) == curr_device and curr_device != "" for tx in orders_to_check)
     user_matches = all(normalize_str(tx.user_id) == curr_user and curr_user != "" for tx in orders_to_check)
     addr_matches = all(normalize_str(tx.shipping_address) == curr_addr and curr_addr != "" for tx in orders_to_check)
@@ -119,12 +119,12 @@ def evaluate_mastercard_fpt(
         )
         return False, len(qualifying_orders), [], False, gaps
 
-    curr_ip = normalize_str(payload.telemetry.ip_address)
-    curr_device = normalize_str(payload.telemetry.device_id)
-    curr_user = normalize_str(payload.telemetry.user_id)
+    curr_ip = normalize_str(payload.telemetry.ip_address) if payload.telemetry else ""
+    curr_device = normalize_str(payload.telemetry.device_id) if payload.telemetry else ""
+    curr_user = normalize_str(payload.telemetry.user_id) if payload.telemetry else ""
     
     orders_to_check = qualifying_orders[:2]
-    ip_matches = all(is_ip_or_subnet_match(tx.ip_address, curr_ip) for tx in orders_to_check)
+    ip_matches = all(is_ip_or_subnet_match(tx.ip_address, curr_ip) for tx in orders_to_check) if curr_ip else False
     device_matches = all(normalize_str(tx.device_id) == curr_device and curr_device != "" for tx in orders_to_check)
     user_matches = all(normalize_str(tx.user_id) == curr_user and curr_user != "" for tx in orders_to_check)
     
@@ -145,7 +145,7 @@ def evaluate_mastercard_fpt(
     else:
         tier2_delivery = payload.carrier_proof is not None and payload.carrier_proof.delivered_status
 
-    tier3_auth = payload.telemetry.mfa_authenticated or user_matches
+    tier3_auth = bool(payload.telemetry and payload.telemetry.mfa_authenticated) or user_matches
     
     if not tier1_device_id:
         gaps.append("Mastercard FPT Tier 1 failed: No consistent Device Fingerprint or IP address match")
@@ -243,7 +243,7 @@ def evaluate_dispute_compliance(payload: DisputePayload) -> RuleEvaluationResult
         gaps.append("Digital SaaS fulfillment proof is missing or access logs unverified")
         
     # MFA verification
-    mfa_verified = bool(payload.telemetry.mfa_authenticated)
+    mfa_verified = bool(payload.telemetry and payload.telemetry.mfa_authenticated)
     
     # Calculate score
     confidence_score, breakdown = calculate_confidence_score(

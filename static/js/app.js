@@ -1,6 +1,6 @@
 /**
  * SentinelDispute Dashboard Application Logic
- * Integrates real-time stats, LangGraph execution simulation, Dossier viewer, and Cryptographic ledger inspector.
+ * Integrates real-time stats, state engine execution simulation, Dossier viewer, and Cryptographic ledger inspector.
  */
 
 let disputesList = [];
@@ -465,53 +465,239 @@ function renderLedgerBlocks(blocks) {
 // Modal Dossier Inspector
 async function viewDossier(disputeId) {
     try {
-        const [dossierRes, timelineRes] = await Promise.all([
+        const [dossierRes, timelineRes, provRes] = await Promise.all([
             fetch(`/api/v1/disputes/${disputeId}`),
-            fetch(`/api/v1/disputes/${disputeId}/timeline`)
+            fetch(`/api/v1/disputes/${disputeId}/timeline`),
+            fetch(`/api/v1/disputes/${disputeId}/provenance`)
         ]);
 
         if (!dossierRes.ok) return;
         const dossier = await dossierRes.json();
         const timelineEvents = timelineRes.ok ? await timelineRes.json() : [];
+        const provenanceData = provRes.ok ? await provRes.json() : null;
 
         const modal = document.getElementById('dossier-modal');
         const modalBody = document.getElementById('modal-dossier-body');
 
         const isAuto = dossier.decision === 'AUTO_DISPATCHED';
-        const evalRes = dossier.evaluation || {};
-        const pWin = dossier.win_probability !== null && dossier.win_probability !== undefined ? (dossier.win_probability * 100).toFixed(1) + '%' : ((dossier.p_win || 0) * 100).toFixed(1) + '%';
+        const isHitl = dossier.decision === 'ROUTE_TO_HITL_QUEUE';
+        const isAccept = dossier.decision === 'AUTO_ACCEPT_OR_REFUND';
+
+        const pWinNum = dossier.estimated_win_probability !== null && dossier.estimated_win_probability !== undefined 
+            ? dossier.estimated_win_probability 
+            : (dossier.win_probability !== null && dossier.win_probability !== undefined ? dossier.win_probability : (dossier.p_win || 0.0));
+        const pWinStr = (pWinNum * 100).toFixed(1) + '%';
         const evVal = dossier.expected_value !== null && dossier.expected_value !== undefined ? dossier.expected_value : (dossier.expected_value_inr || 0);
 
         const explanation = dossier.decision_explanation || {};
         const positiveFactors = explanation.top_positive_factors || [];
         const negativeFactors = explanation.top_negative_factors || [];
+        const contradictions = dossier.contradictions || [];
 
-        modalBody.innerHTML = `
-            <!-- Dossier Header Banner -->
-            <div class="dossier-cert-banner">
-                <div>
-                    <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin-bottom: 4px;">
-                        ${isAuto ? '🛡️ Autonomous Representment Dossier (CE 3.0 / FPT Certified)' : '⚠️ Human-in-the-Loop Review Dossier'}
-                    </h3>
-                    <p style="font-size: 12px; color: var(--text-muted);">${dossier.summary}</p>
-                </div>
-                <div style="text-align: right;">
-                    <div style="font-size: 24px; font-weight: 800; color: ${isAuto ? 'var(--accent-emerald)' : 'var(--accent-amber)'};">
-                        ${dossier.confidence_score}<span style="font-size: 14px; font-weight: 500; color: var(--text-muted);">/100</span>
+        // B4: State-Machine Visualization Stepper
+        const stages = [
+            { key: 'RECEIVED', label: 'Received' },
+            { key: 'TRIAGED', label: 'Triaged' },
+            { key: 'EVIDENCE_AGGREGATED', label: 'Aggregated' },
+            { key: 'RULES_EVALUATED', label: 'Rules' },
+            { key: 'ECONOMIC_EVALUATED', label: 'Economics' },
+            { key: 'DECISION', label: 'Decision' },
+            { key: 'REPRESENTMENT', label: 'Representment' },
+            { key: 'OUTCOME', label: 'Outcome' }
+        ];
+
+        let activeIndex = 5; // DECISION
+        if (isAuto) activeIndex = 6; // REPRESENTMENT
+        if (isAccept) activeIndex = 7; // OUTCOME
+
+        const stepperHtml = `
+            <div class="stepper-container">
+                ${stages.map((st, idx) => {
+                    const isCompleted = idx < activeIndex;
+                    const isActive = idx === activeIndex;
+                    const statusClass = isCompleted ? 'completed' : (isActive ? 'active' : '');
+                    const icon = isCompleted ? '✓' : (idx + 1);
+                    return `
+                        <div class="stepper-step ${statusClass}">
+                            <div class="stepper-circle">${icon}</div>
+                            <span class="stepper-label">${st.label}</span>
+                        </div>
+                        ${idx < stages.length - 1 ? `<div class="stepper-connector ${idx < activeIndex ? 'completed' : ''}"></div>` : ''}
+                    `;
+                }).join('')}
+            </div>
+        `;
+
+        // B5: Decision-First Hero Section
+        let verdictBadgeClass = 'verdict-badge-auto';
+        let verdictIcon = '🛡️';
+        let verdictText = 'AUTO-DISPATCHED';
+        if (isHitl) {
+            verdictBadgeClass = 'verdict-badge-hitl';
+            verdictIcon = '⚠️';
+            verdictText = 'ROUTE TO HITL QUEUE';
+        } else if (isAccept) {
+            verdictBadgeClass = 'verdict-badge-accept';
+            verdictIcon = '🛑';
+            verdictText = 'AUTO-ACCEPT / REFUND';
+        }
+
+        const heroHtml = `
+            <div class="decision-hero">
+                <div class="decision-hero-verdict">
+                    <div class="verdict-tag">Autonomous Defense Verdict</div>
+                    <div class="verdict-badge-lg ${verdictBadgeClass}">
+                        <span>${verdictIcon}</span> <span>${verdictText}</span>
                     </div>
-                    <span class="badge ${isAuto ? 'badge-auto' : 'badge-hitl'}">${dossier.decision}</span>
+                    <div style="font-size: 12px; color: var(--text-muted); max-width: 480px; line-height: 1.4;">
+                        ${explanation.summary || dossier.summary}
+                    </div>
+                </div>
+                <div class="decision-hero-metrics">
+                    <div class="hero-metric-card">
+                        <div class="hero-metric-label">Est. Win Prob</div>
+                        <div class="hero-metric-val" style="color: var(--accent-cyan);">${pWinStr}</div>
+                    </div>
+                    <div class="hero-metric-card">
+                        <div class="hero-metric-label">Expected Value E[V]</div>
+                        <div class="hero-metric-val" style="color: ${evVal >= 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">
+                            ${evVal >= 0 ? '+' : ''}₹${evVal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                        </div>
+                    </div>
+                    <div class="hero-metric-card">
+                        <div class="hero-metric-label">Confidence Score</div>
+                        <div class="hero-metric-val" style="color: ${dossier.confidence_score >= 85 ? 'var(--accent-emerald)' : (dossier.confidence_score >= 40 ? 'var(--accent-amber)' : 'var(--accent-rose)')};">
+                            ${dossier.confidence_score}<span style="font-size: 11px; color: var(--text-subtle);">/100</span>
+                        </div>
+                    </div>
                 </div>
             </div>
+        `;
+
+        // B2: Contradiction Alert Banner
+        let contradictionBannerHtml = '';
+        if (contradictions && contradictions.length > 0) {
+            contradictionBannerHtml = `
+                <div class="conflict-alert-banner">
+                    <div style="font-size: 20px;">🚨</div>
+                    <div>
+                        <div class="conflict-alert-title">
+                            ${contradictions.length} Active Evidence Contradiction${contradictions.length > 1 ? 's' : ''} Detected (Escalated to HITL Analyst)
+                        </div>
+                        ${contradictions.map(c => `
+                            <div class="conflict-alert-desc">
+                                <strong>[${c.conflict_id}]</strong> ${c.description} 
+                                <span style="font-family: var(--font-mono); font-size: 11px; opacity: 0.85;">(Fields: ${c.fields.join(', ')})</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Central Evidence Items (A2 & B1)
+        const evidenceItems = dossier.evidence_items || [];
+        const evidenceGridHtml = evidenceItems.length > 0 ? `
+            <div style="margin-bottom: 20px;">
+                <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text-main); display: flex; align-items: center; justify-content: space-between;">
+                    <span>📦 Central Evidence Items &amp; Strict Status Verification</span>
+                    <span style="font-size: 11px; color: var(--text-muted); font-weight: normal;">Non-fabricated raw telemetry</span>
+                </h4>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px;">
+                    ${evidenceItems.map(item => {
+                        let statusBadgeClass = 'badge-status-missing';
+                        const stStr = String(item.status).toUpperCase();
+                        if (stStr === 'VERIFIED') statusBadgeClass = 'badge-status-verified';
+                        else if (stStr === 'PARTIALLY_VERIFIED') statusBadgeClass = 'badge-status-partially-verified';
+                        else if (stStr === 'UNVERIFIED') statusBadgeClass = 'badge-status-unverified';
+                        else if (stStr === 'CONTRADICTED') statusBadgeClass = 'badge-status-contradicted';
+
+                        let valDisplay = item.value;
+                        if (valDisplay === null || valDisplay === undefined) {
+                            valDisplay = '<span style="color: var(--text-subtle); font-style: italic;">None (Missing)</span>';
+                        } else if (typeof valDisplay === 'object') {
+                            valDisplay = `<pre style="margin: 0; font-size: 10px; font-family: var(--font-mono);">${JSON.stringify(valDisplay, null, 1)}</pre>`;
+                        } else {
+                            valDisplay = `<span class="mono-text" style="font-size: 11px;">${valDisplay}</span>`;
+                        }
+
+                        return `
+                            <div style="background: var(--surface-2); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                    <span style="font-family: var(--font-mono); font-weight: 700; font-size: 11px; color: var(--accent-cyan);">${item.evidence_id}</span>
+                                    <span class="${statusBadgeClass}">${stStr}</span>
+                                </div>
+                                <div style="font-weight: 600; font-size: 12px; color: var(--text-main); margin-bottom: 4px;">${item.evidence_type}</div>
+                                <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 6px;">
+                                    Source: <span class="mono-text" style="color: #cbd5e1;">${item.source}</span>
+                                </div>
+                                <div style="background: rgba(0,0,0,0.2); padding: 6px 8px; border-radius: 4px; margin-bottom: 6px;">
+                                    ${valDisplay}
+                                </div>
+                                <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-subtle);">
+                                    <span>Score Contribution:</span>
+                                    <strong style="color: ${item.score_contribution > 0 ? 'var(--accent-emerald)' : 'var(--text-muted)'};">+${item.score_contribution} pts</strong>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        ` : '';
+
+        // B1: Provenance Graph Chains
+        let provenanceHtml = '';
+        if (provenanceData && provenanceData.provenance_chains && provenanceData.provenance_chains.length > 0) {
+            provenanceHtml = `
+                <div class="provenance-flow-container">
+                    <h4 style="font-size: 13px; font-weight: 600; color: #38bdf8; margin: 0 0 10px 0; display: flex; align-items: center; justify-content: space-between;">
+                        <span>🧬 Evidence Provenance Graph &amp; Audit Traceability</span>
+                        <span style="font-size: 11px; font-weight: normal; color: var(--text-muted);">Source ➔ EvidenceItem ➔ Rule ➔ Decision ➔ Claim</span>
+                    </h4>
+                    <div class="prov-chain-list">
+                        ${provenanceData.provenance_chains.map(chain => {
+                            const claimsStr = chain.claims_supported && chain.claims_supported.length > 0 
+                                ? chain.claims_supported.map(c => `<span class="prov-node-tag prov-tag-claim">Claim ${c}</span>`).join(' ')
+                                : '<span style="color: var(--text-subtle); font-size: 10px;">None</span>';
+                            
+                            const rulesStr = chain.rules && chain.rules.length > 0
+                                ? chain.rules.map(r => `<span class="prov-node-tag prov-tag-rule">${r}</span>`).join(' ')
+                                : '<span style="color: var(--text-subtle); font-size: 10px;">Standard</span>';
+
+                            return `
+                                <div class="prov-chain-item">
+                                    <span class="prov-node-tag prov-tag-src">📁 ${chain.source}</span>
+                                    <span style="color: var(--text-subtle);">➔</span>
+                                    <span class="prov-node-tag prov-tag-ev">📦 ${chain.evidence_id} (${chain.status})</span>
+                                    <span style="color: var(--text-subtle);">➔</span>
+                                    ${rulesStr}
+                                    <span style="color: var(--text-subtle);">➔</span>
+                                    <span style="font-size: 10px; color: var(--accent-emerald); font-weight: 600;">+${chain.score_contribution} pts</span>
+                                    <span style="color: var(--text-subtle);">➔</span>
+                                    <span class="prov-node-tag" style="background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.3);">${chain.decision}</span>
+                                    <span style="color: var(--text-subtle);">➔</span>
+                                    ${claimsStr}
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        modalBody.innerHTML = `
+            ${stepperHtml}
+            ${heroHtml}
+            ${contradictionBannerHtml}
 
             <!-- Explainable AI Decision Card -->
-            <div style="background: var(--surface-2); border-radius: var(--radius-md); padding: 18px; border: 1px solid var(--border-color);">
+            <div style="background: var(--surface-2); border-radius: var(--radius-md); padding: 18px; border: 1px solid var(--border-color); margin-bottom: 20px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                     <h4 style="font-size: 14px; font-weight: 600; color: var(--accent-cyan); margin: 0;">
                         🧠 Explainable AI Decision &amp; Attribution Factors
                     </h4>
                     <span class="badge badge-visa">${explanation.rule_applied || dossier.card_network.toUpperCase()}</span>
                 </div>
-                <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">${explanation.summary || dossier.summary}</p>
 
                 ${positiveFactors.length > 0 ? `
                     <div style="margin-bottom: 10px;">
@@ -536,64 +722,11 @@ async function viewDossier(disputeId) {
                 </div>
             </div>
 
-            <!-- Evidence Intelligence Matrix -->
-            <div>
-                <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text-main);">
-                    🎯 Evidence Intelligence &amp; Multi-Factor Verification
-                </h4>
-                <div class="matrix-grid">
-                    <div class="matrix-card ${dossier.mfa_verification ? 'matched' : 'missing'}">
-                        <div class="matrix-status">${dossier.mfa_verification ? '✅' : '❌'}</div>
-                        <div class="matrix-title">Authentication (3DS)</div>
-                        <div class="matrix-desc">${dossier.payment_authentication || (dossier.mfa_verification ? '3DS 2.2 Verified' : 'Frictionless')}</div>
-                    </div>
-                    <div class="matrix-card ${(dossier.delivery_proof && dossier.delivery_proof.delivered_status) || (dossier.carrier_proof && dossier.carrier_proof.delivered_status) ? 'matched' : 'missing'}">
-                        <div class="matrix-status">${(dossier.delivery_proof && dossier.delivery_proof.delivered_status) || (dossier.carrier_proof && dossier.carrier_proof.delivered_status) ? '✅' : '❌'}</div>
-                        <div class="matrix-title">Physical Carrier Proof</div>
-                        <div class="matrix-desc">${dossier.delivery_proof ? dossier.delivery_proof.carrier_name + ' (' + dossier.delivery_proof.tracking_number + ')' : (dossier.carrier_proof ? dossier.carrier_proof.carrier_name : 'No Proof')}</div>
-                    </div>
-                    <div class="matrix-card ${(dossier.gps_verification && dossier.gps_verification.verified_within_50m) || (dossier.carrier_proof && dossier.carrier_proof.verified_gps) ? 'matched' : 'missing'}">
-                        <div class="matrix-status">${(dossier.gps_verification && dossier.gps_verification.verified_within_50m) || (dossier.carrier_proof && dossier.carrier_proof.verified_gps) ? '✅' : '❌'}</div>
-                        <div class="matrix-title">GPS Geolocation Scan</div>
-                        <div class="matrix-desc">${(dossier.gps_verification && dossier.gps_verification.verified_within_50m) ? '50m Radius Verified' : 'No GPS Match'}</div>
-                    </div>
-                    <div class="matrix-card ${(dossier.customer_history_summary && dossier.customer_history_summary.qualifying_orders_count >= 1) || dossier.historical_count >= 1 ? 'matched' : 'missing'}">
-                        <div class="matrix-status">${(dossier.customer_history_summary && dossier.customer_history_summary.qualifying_orders_count >= 1) || dossier.historical_count >= 1 ? '✅' : '❌'}</div>
-                        <div class="matrix-title">Historical Trust (CE 3.0)</div>
-                        <div class="matrix-desc">${dossier.customer_history_summary ? dossier.customer_history_summary.total_historical_orders + ' orders (' + dossier.customer_history_summary.undisputed_count + ' undisputed)' : dossier.historical_count + ' historical orders'}</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Economic Expected Value (E[V]) Breakdown -->
-            <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: var(--radius-md); padding: 16px;">
-                <h4 style="font-size: 13px; font-weight: 600; color: #38bdf8; margin-bottom: 12px;">
-                    💰 Economic Net Recovery Expected Value E[V] = P(win)&middot;A &minus; (1&minus;P(win))&middot;F<sub>fee</sub> &minus; C<sub>op</sub>
-                </h4>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; font-size: 12px;">
-                    <div class="metric-box">
-                        <div class="metric-box-title">Disputed Amount (A)</div>
-                        <div class="metric-box-val" style="color: var(--text-main);">₹${dossier.amount_inr.toLocaleString()}</div>
-                    </div>
-                    <div class="metric-box">
-                        <div class="metric-box-title">Win Prob P(win)</div>
-                        <div class="metric-box-val" style="color: var(--accent-cyan);">${pWin}</div>
-                    </div>
-                    <div class="metric-box">
-                        <div class="metric-box-title">Net E[V]</div>
-                        <div class="metric-box-val" style="color: ${evVal >= 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">
-                            ${evVal >= 0 ? '+' : ''}₹${evVal.toLocaleString()}
-                        </div>
-                    </div>
-                    <div class="metric-box">
-                        <div class="metric-box-title">Issuer Fee Risk</div>
-                        <div class="metric-box-val" style="color: var(--accent-rose);">₹1,500.00</div>
-                    </div>
-                </div>
-            </div>
+            ${evidenceGridHtml}
+            ${provenanceHtml}
 
             <!-- Evidence Timeline Trail -->
-            <div style="background: var(--surface-2); border-radius: var(--radius-md); padding: 18px; border: 1px solid var(--border-color);">
+            <div style="background: var(--surface-2); border-radius: var(--radius-md); padding: 18px; border: 1px solid var(--border-color); margin-bottom: 20px;">
                 <h4 style="font-size: 13px; font-weight: 600; color: #a855f7; margin-bottom: 14px;">
                     ⏱️ Chronological Evidence &amp; Decision Timeline
                 </h4>
@@ -632,7 +765,7 @@ async function viewDossier(disputeId) {
             </div>
 
             <!-- Cryptographic Seal Info -->
-            <div style="border-top: 1px solid var(--border-color); padding-top: 12px; font-size: 11px; font-family: var(--font-mono); color: var(--text-muted);">
+            <div style="border-top: 1px solid var(--border-color); margin-top: 12px; padding-top: 12px; font-size: 11px; font-family: var(--font-mono); color: var(--text-muted);">
                 <div><strong>CRYPTOGRAPHIC SEAL:</strong> <span style="color: var(--accent-cyan);">${dossier.sealed_hash}</span></div>
                 <div><strong>TIMESTAMP:</strong> ${dossier.timestamp}</div>
             </div>
@@ -1133,7 +1266,7 @@ async function submitRemediation(disputeId) {
     const btn = document.getElementById('btn-submit-remediation');
     if (btn) {
         btn.disabled = true;
-        btn.innerText = '⏳ Re-evaluating LangGraph Compliance Engine...';
+        btn.innerText = '⏳ Re-evaluating Compliance Engine...';
     }
 
     const payload = {

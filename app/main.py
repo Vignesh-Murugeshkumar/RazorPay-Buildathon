@@ -183,14 +183,18 @@ from app.schemas.remediation import RemediationEvidencePayload
 
 @app.get("/api/v1/disputes/{dispute_id}", response_model=Dossier, tags=["Disputes"])
 async def get_dispute(dispute_id: str):
-    """Returns full evidence dossier and evaluation trace."""
+    """
+    Returns full evidence dossier and evaluation trace.
+    PostgreSQL/SQLite database is the authoritative source of truth.
+    """
+    dossier = db.get_dossier(dispute_id)
+    if dossier:
+        get_dossiers_db()[dispute_id] = dossier
+        return dossier
+    # Optional fallback if DB was bypassed in lightweight mock test
     cache = get_dossiers_db()
     if dispute_id in cache:
         return cache[dispute_id]
-    dossier = db.get_dossier(dispute_id)
-    if dossier:
-        cache[dispute_id] = dossier
-        return dossier
     raise HTTPException(status_code=404, detail="Dispute dossier not found")
 
 
@@ -199,7 +203,7 @@ async def remediate_dispute_evidence(dispute_id: str, remediation: RemediationEv
     """
     Human-in-the-Loop (HITL) Evidence Remediation:
     Allows analysts to supply missing carrier proof, GPS telemetry, MFA verification, or SaaS logs.
-    Re-runs the LangGraph deterministic compliance engine and auto-dispatches if Sc >= 85.0.
+    Re-runs the deterministic compliance engine and auto-dispatches if Sc >= 85.0.
     """
     raw_payload = db.get_raw_payload(dispute_id)
     if not raw_payload:

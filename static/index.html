@@ -35,7 +35,7 @@
                     <span class="pulse-dot"></span> SHA-256 Ledger: Verified
                 </div>
                 <div class="status-pill">
-                    ⚡ LangGraph State Engine
+                    ⚡ Deterministic State Engine
                 </div>
                 <a href="/docs" target="_blank" class="btn btn-secondary" style="font-size: 11px;">
                     API Docs &rarr;
@@ -194,7 +194,7 @@
                             <th>Network &amp; Reason</th>
                             <th>Amount (INR)</th>
                             <th>Confidence ($S_c$)</th>
-                            <th>Win Prob / E[V]</th>
+                            <th>Estimated Win Prob / E[V]</th>
                             <th>Gatekeeper Decision</th>
                             <th>Assigned To</th>
                             <th>Actions</th>
@@ -224,7 +224,7 @@
                             <th>Dispute ID</th>
                             <th>Amount</th>
                             <th>Network / Reason</th>
-                            <th>Win Prob &amp; E[V]</th>
+                            <th>Est. Win Prob &amp; E[V]</th>
                             <th>Actionable Evidence Gaps</th>
                             <th>Assigned Analyst</th>
                             <th>Actions</th>
@@ -244,6 +244,9 @@
                     <div class="panel-title">
                         <span>📜 Card Network Regulatory Frameworks &amp; Qualification Criteria</span>
                     </div>
+                </div>
+                <div style="background: rgba(234, 179, 8, 0.08); border-left: 3px solid var(--accent-amber); padding: 10px 14px; margin: 10px 0; border-radius: 4px; font-size: 12px; color: var(--accent-amber);">
+                    ⚠️ <b>Notice:</b> Implementation for demonstration purposes; verify current scheme documentation before production use.
                 </div>
                 <div id="rules-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; padding: 10px 0;">
                     <!-- Dynamically Populated Rules -->

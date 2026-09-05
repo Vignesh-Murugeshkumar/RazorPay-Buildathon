@@ -10,19 +10,22 @@ from app.schemas.dispute import Dossier
 
 class RepresentmentPackageGenerator:
     """
-    Automated Representment Package Service.
+    Automated Representment Evidence Package Generator.
     Compiles structured JSON packages and audit-grade, professional PDF evidence dossiers
-    ready for submission to card networks (Visa, Mastercard, RuPay, Amex) and acquirers.
+    as a network-ready evidence draft for merchant dispute defense.
     """
 
     @classmethod
     def generate_package_json(cls, dossier: Dossier) -> Dict[str, Any]:
         """Builds a comprehensive structured JSON representment package."""
-        p_win = dossier.win_probability if dossier.win_probability is not None else (dossier.p_win or 0.0)
+        p_win = dossier.estimated_win_probability if dossier.estimated_win_probability is not None else (
+            dossier.win_probability if dossier.win_probability is not None else (dossier.p_win or 0.0)
+        )
         ev_inr = dossier.expected_value if dossier.expected_value is not None else (dossier.expected_value_inr or 0.0)
 
         return {
-            "package_version": "2.0",
+            "package_version": "2.0-EVIDENCE-CONSTRAINED",
+            "document_type": "Automated Representment Evidence Package",
             "dispute_id": dossier.dispute_id,
             "payment_id": dossier.payment_id,
             "amount_inr": dossier.amount_inr,
@@ -32,8 +35,11 @@ class RepresentmentPackageGenerator:
             "decision": dossier.decision,
             "timestamp": dossier.timestamp,
             "sealed_hash": dossier.sealed_hash,
+            "evidence_items": [e.model_dump() for e in dossier.evidence_items],
+            "evidence_statuses": {k: (v.value if hasattr(v, "value") else str(v)) for k, v in dossier.evidence_statuses.items()},
+            "contradictions": [c.model_dump() for c in dossier.contradictions],
             "evidence_intelligence": {
-                "payment_authentication": dossier.payment_authentication or "3DS 2.2 Verified",
+                "payment_authentication": dossier.payment_authentication or "NOT_VERIFIED",
                 "delivery_proof": dossier.delivery_proof,
                 "gps_verification": dossier.gps_verification,
                 "mfa_verification": dossier.mfa_verification,
@@ -48,12 +54,14 @@ class RepresentmentPackageGenerator:
                 "top_negative_factors": [],
                 "confidence_breakdown": {},
                 "rule_applied": f"{dossier.card_network.upper()} {dossier.reason_code}",
+                "estimated_win_probability": p_win,
                 "win_probability": p_win,
                 "expected_value_inr": ev_inr,
-                "recommendation": "Submit representment"
+                "recommendation": "Submit representment draft"
             },
             "rebuttal_letter": dossier.rebuttal_letter,
             "economic_metrics": {
+                "estimated_win_probability": p_win,
                 "win_probability": p_win,
                 "expected_value_inr": ev_inr,
                 "ev_breakdown": dossier.ev_breakdown or {}
@@ -140,7 +148,7 @@ class RepresentmentPackageGenerator:
         header_table = Table(
             [
                 [
-                    Paragraph("<b>SENTINELDISPUTE</b> &mdash; DISPUTE DEFENSE DOSSIER", title_style),
+                    Paragraph("<b>SENTINELDISPUTE</b> &mdash; AUTOMATED REPRESENTMENT EVIDENCE PACKAGE", title_style),
                     Paragraph(f"<b>STATUS:</b> {dossier.decision}<br/><b>CONFIDENCE:</b> {dossier.confidence_score:.1f}/100", subtitle_style)
                 ]
             ],
@@ -156,7 +164,9 @@ class RepresentmentPackageGenerator:
         story.append(HRFlowable(width="100%", thickness=1.5, color=accent_color, spaceAfter=10))
 
         # 2. Transaction & Dispute Overview Table
-        p_win = dossier.win_probability if dossier.win_probability is not None else (dossier.p_win or 0.0)
+        p_win = dossier.estimated_win_probability if dossier.estimated_win_probability is not None else (
+            dossier.win_probability if dossier.win_probability is not None else (dossier.p_win or 0.0)
+        )
         ev_inr = dossier.expected_value if dossier.expected_value is not None else (dossier.expected_value_inr or 0.0)
 
         overview_data = [
@@ -165,12 +175,8 @@ class RepresentmentPackageGenerator:
                 Paragraph("<b>Disputed Amount:</b>", body_style), Paragraph(f"₹{dossier.amount_inr:,.2f}", body_style)
             ],
             [
-                Paragraph("<b>Payment ID:</b>", body_style), Paragraph(dossier.payment_id, body_style),
-                Paragraph("<b>Card Network:</b>", body_style), Paragraph(dossier.card_network.upper(), body_style)
-            ],
-            [
                 Paragraph("<b>Reason Code:</b>", body_style), Paragraph(dossier.reason_code, body_style),
-                Paragraph("<b>Win Probability:</b>", body_style), Paragraph(f"{p_win*100:.1f}%", body_style)
+                Paragraph("<b>Estimated Win Prob:</b>", body_style), Paragraph(f"{p_win*100:.1f}%", body_style)
             ],
             [
                 Paragraph("<b>Filing Date:</b>", body_style), Paragraph(dossier.timestamp[:19].replace("T", " "), body_style),
@@ -193,33 +199,40 @@ class RepresentmentPackageGenerator:
         story.append(Paragraph("EVIDENCE INTELLIGENCE & COMPLIANCE VERIFICATION", heading_style))
         
         # Prepare evidence items
-        carrier_info = "Not Applicable / Unregistered"
+        carrier_info = "NOT_PROVIDED"
         if dossier.delivery_proof:
-            carrier_info = f"{dossier.delivery_proof.get('carrier_name', 'Carrier')} &bull; Trk: {dossier.delivery_proof.get('tracking_number', 'N/A')} &bull; Delivered: {dossier.delivery_proof.get('delivered_status', True)}"
+            carrier_info = f"{dossier.delivery_proof.get('carrier_name', 'Carrier')} &bull; Trk: {dossier.delivery_proof.get('tracking_number', 'NOT_PROVIDED')} &bull; Delivered: {'YES' if dossier.delivery_proof.get('delivered_status') else 'NO'}"
         elif dossier.carrier_proof:
-            carrier_info = f"{dossier.carrier_proof.carrier_name} &bull; Trk: {dossier.carrier_proof.tracking_number} &bull; Delivered: {dossier.carrier_proof.delivered_status}"
+            trk = dossier.carrier_proof.tracking_number or "NOT_PROVIDED"
+            carrier_info = f"{dossier.carrier_proof.carrier_name or 'Carrier'} &bull; Trk: {trk} &bull; Delivered: {'YES' if dossier.carrier_proof.delivered_status else 'NO'}"
 
-        gps_info = "Not Available"
+        gps_info = "NOT_PROVIDED"
         if dossier.gps_verification:
             lat = dossier.gps_verification.get("latitude")
             lon = dossier.gps_verification.get("longitude")
             verified = dossier.gps_verification.get("verified_within_50m", False)
-            gps_info = f"Coords: {lat:.4f}, {lon:.4f} &bull; 50m Radius Match: {'YES (Verified)' if verified else 'NO'}"
+            if lat is not None and lon is not None:
+                gps_info = f"Coords: {lat:.4f}, {lon:.4f} &bull; 50m Radius Match: {'YES (Verified)' if verified else 'NO'}"
+            else:
+                gps_info = "NOT_PROVIDED"
         elif dossier.carrier_proof and dossier.carrier_proof.gps_latitude is not None:
-            gps_info = f"Coords: {dossier.carrier_proof.gps_latitude:.4f}, {dossier.carrier_proof.gps_longitude:.4f} &bull; Verified: {dossier.carrier_proof.verified_gps}"
+            gps_info = f"Coords: {dossier.carrier_proof.gps_latitude:.4f}, {dossier.carrier_proof.gps_longitude:.4f} &bull; Verified: {'YES' if dossier.carrier_proof.verified_gps else 'NO'}"
 
-        hist_info = f"{dossier.historical_count} Prior Undisputed Orders on Record"
+        hist_info = f"{dossier.historical_count} Prior Orders on Record"
         if dossier.customer_history_summary:
             hist_info = f"{dossier.customer_history_summary.get('total_historical_orders', dossier.historical_count)} Prior Orders &bull; {dossier.customer_history_summary.get('undisputed_count', 0)} Undisputed &bull; Qualifying: {dossier.customer_history_summary.get('qualifying_orders_count', 0)}"
 
-        mfa_text = dossier.payment_authentication or ("3DS 2.2 Verified" if dossier.mfa_verification else "Frictionless Checkout")
+        mfa_text = dossier.payment_authentication or ("MFA / OTP Verified" if dossier.mfa_verification else "NOT_VERIFIED")
+
+        ip_str = dossier.ip_address or (dossier.telemetry.ip_address if dossier.telemetry and dossier.telemetry.ip_address else "NOT_PROVIDED")
+        dev_str = (dossier.telemetry.device_id if dossier.telemetry and dossier.telemetry.device_id else "NOT_PROVIDED")
 
         evidence_table_data = [
             [Paragraph("<b>Authentication (MFA):</b>", body_style), Paragraph(mfa_text, body_style)],
             [Paragraph("<b>Physical Carrier Proof:</b>", body_style), Paragraph(carrier_info, body_style)],
             [Paragraph("<b>GPS Geolocation Match:</b>", body_style), Paragraph(gps_info, body_style)],
             [Paragraph("<b>Historical Trust (CE 3.0 / FPT):</b>", body_style), Paragraph(hist_info, body_style)],
-            [Paragraph("<b>IP & Device Telemetry:</b>", body_style), Paragraph(f"IP: {dossier.ip_address or '127.0.0.1'} &bull; Device: {dossier.telemetry.device_id if dossier.telemetry else 'Verified Fingerprint'}", body_style)]
+            [Paragraph("<b>IP & Device Telemetry:</b>", body_style), Paragraph(f"IP: {ip_str} &bull; Device: {dev_str}", body_style)]
         ]
 
         t_evidence = Table(evidence_table_data, colWidths=[150, 390])

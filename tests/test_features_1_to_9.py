@@ -207,7 +207,7 @@ def test_feature_8_outcome_learning_loop():
         "event": "payment.dispute.won",
         "dispute_id": "disp_out_1",
         "card_bin": "424242",
-        "issuing_bank": "HDFC Bank",
+        "issuing_bank": "Synthetic Issuer A",
         "network": "visa",
         "reason_code": "10.4",
         "outcome": "won",

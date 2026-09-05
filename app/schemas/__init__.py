@@ -4,7 +4,9 @@ from app.schemas.dispute import (
     HistoricalTransaction,
     RazorpayDisputeWebhook,
     DisputePayload,
-    RuleEvaluationResult,
+    EvidenceStatus,
+    EvidenceItem,
+    EvidenceContradiction,
     DecisionExplanation,
     Dossier,
     DisputeSummary

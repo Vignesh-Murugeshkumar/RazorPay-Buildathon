@@ -5,9 +5,11 @@ from app.core.logger import get_logger
 logger = get_logger("expected_value_engine")
 
 
+# Future work: calibrate estimated win probability against historical dispute outcomes.
 class ExpectedValueResult(BaseModel):
     disputed_amount_inr: float
-    p_win: float = Field(..., description="Calibrated win probability P(win|x)")
+    estimated_win_probability: float = Field(..., description="Estimated win probability P(win|x)")
+    p_win: float = Field(..., description="Estimated win probability alias for backward compatibility")
     issuer_fee_inr: float = Field(..., description="Non-refundable issuer dispute fee F_fee")
     operational_cost_inr: float = Field(..., description="Operational & API infrastructure cost C_op")
     expected_value_inr: float = Field(..., description="Calculated Expected Value E[V]")
@@ -17,20 +19,21 @@ class ExpectedValueResult(BaseModel):
     rationale: str
 
 
-def calibrate_win_probability(
+def estimate_win_probability(
     confidence_score: float,
     ce30_compliant: bool = False,
     fpt_compliant: bool = False,
     issuer_win_rate_adjustment: float = 0.0
 ) -> float:
     """
-    Calibrates probability P(win | x) from the telemetry confidence score (0-100)
+    Estimates probability P(win | x) from the telemetry confidence score (0-100)
     and network compliance factors, adjusted by historical issuer propensity.
+    Future work: calibrate estimated win probability against historical dispute outcomes.
     """
     score = max(0.0, min(100.0, float(confidence_score)))
     
     if (ce30_compliant or fpt_compliant) and (score >= 85.0):
-        # CE 3.0 / FPT liability shift yields 88% - 98% empirical win rates
+        # CE 3.0 / FPT liability shift estimate
         base_p = 0.70 + (0.28 * ((score - 85.0) / 15.0 if score > 85.0 else 0.0))
     elif score >= 85.0:
         base_p = 0.70 + (0.25 * ((score - 85.0) / 15.0))
@@ -42,6 +45,10 @@ def calibrate_win_probability(
     # Apply issuer intelligence delta (clamped to [0.01, 0.99])
     adjusted_p = max(0.01, min(0.99, base_p + issuer_win_rate_adjustment))
     return round(adjusted_p, 4)
+
+
+# Backward compatibility alias
+calibrate_win_probability = estimate_win_probability
 
 
 def calculate_expected_value(
@@ -58,67 +65,77 @@ def calculate_expected_value(
     Formula:
         E[V] = P(win | x) * A - (1 - P(win | x)) * F_fee - C_op
 
-    Decision Matrix:
-    - E[V] > 0 and P(win) >= 0.70: AUTO_SUBMIT_REPRESENTMENT
-    - E[V] > 0 and 0.40 <= P(win) < 0.70: ROUTE_TO_HITL_QUEUE
-    - E[V] <= 0: AUTO_ACCEPT_OR_REFUND (Prevents negative net recovery and secondary penalties)
+    Decision Boundary:
+    - E[V] > 0 and P(win) >= 0.70  --> AUTO_SUBMIT_REPRESENTMENT (Autonomous Defense)
+    - E[V] > 0 and 0.40 <= P < 0.70 --> ROUTE_TO_HITL_QUEUE (Human Evidence Remediation)
+    - E[V] <= 0                    --> AUTO_ACCEPT_OR_REFUND (Prevent Arbitration Penalty)
     """
-    principal = float(amount_inr)
-    fee = float(issuer_fee_inr)
-    cost = float(operational_cost_inr)
-
-    p_win = calibrate_win_probability(
+    p_win = estimate_win_probability(
         confidence_score=confidence_score,
         ce30_compliant=ce30_compliant,
         fpt_compliant=fpt_compliant,
         issuer_win_rate_adjustment=issuer_adjustment
     )
-    p_loss = 1.0 - p_win
 
-    # E[V] = P(win)*A - (1-P(win))*F_fee - C_op
-    ev = (p_win * principal) - (p_loss * fee) - cost
-    ev_rounded = round(ev, 2)
-    is_profitable = ev_rounded > 0
+    amount = float(amount_inr)
+    fee = float(issuer_fee_inr)
+    cost = float(operational_cost_inr)
 
-    if is_profitable and p_win >= 0.70:
+    # Core mathematical expectation
+    expected_value = (p_win * amount) - ((1.0 - p_win) * fee) - cost
+    ev_rounded = round(expected_value, 2)
+    is_profitable = ev_rounded > 0.0
+
+    # Policy Router
+    if ev_rounded > 0.0 and p_win >= 0.70:
         decision = "AUTO_SUBMIT_REPRESENTMENT"
         rationale = (
-            f"Representment is economically profitable (E[V] = +₹{ev_rounded:,.2f}) with high win probability "
-            f"P(win) = {p_win*100:.1f}%. Safe for autonomous network representment."
+            f"Profitable representment (E[V] = +₹{ev_rounded:,.2f}) with strong estimated win probability "
+            f"({p_win*100:.1f}%). Exceeds autonomous threshold (>=70%)."
         )
-    elif is_profitable and (0.40 <= p_win < 0.70):
+    elif ev_rounded > 0.0 and p_win >= 0.40:
         decision = "ROUTE_TO_HITL_QUEUE"
         rationale = (
-            f"Representment is mathematically positive (E[V] = +₹{ev_rounded:,.2f}) but carries moderate risk "
-            f"P(win) = {p_win*100:.1f}%. Routed to Human-in-the-Loop review queue for supplementary evidence."
+            f"Positive expected value (E[V] = +₹{ev_rounded:,.2f}), but moderate win probability "
+            f"({p_win*100:.1f}%). Routed to Human-in-the-Loop review for evidence enrichment."
         )
     else:
         decision = "AUTO_ACCEPT_OR_REFUND"
         rationale = (
-            f"Representment is unprofitable (E[V] = ₹{ev_rounded:,.2f} <= ₹0) with win probability "
-            f"P(win) = {p_win*100:.1f}%. Auto-accept dispute or issue refund to prevent issuer fee (₹{fee:,.2f}) "
-            f"and protect VAMP/ECM merchant thresholds."
+            f"Unprofitable representment (E[V] = ₹{ev_rounded:,.2f}, P(win) = {p_win*100:.1f}%). "
+            f"Potential recovery does not justify the non-refundable ₹{fee:,.2f} dispute fee and ₹{cost:,.2f} cost. "
+            f"Auto-accept recommended to avoid financial loss."
         )
 
-    breakdown = {
-        "formula": "E[V] = P(win) * A - (1 - P(win)) * F_fee - C_op",
-        "principal_A": principal,
+    formula_breakdown = {
+        "amount_inr": amount,
+        "estimated_win_probability": p_win,
         "p_win": p_win,
-        "p_loss": round(p_loss, 4),
-        "expected_gross_recovery": round(p_win * principal, 2),
-        "expected_fee_loss": round(p_loss * fee, 2),
-        "operational_cost": cost,
+        "issuer_fee_inr": fee,
+        "operational_cost_inr": cost,
+        "expected_recovery": round(p_win * amount, 2),
+        "expected_loss_risk": round((1.0 - p_win) * fee, 2),
         "net_expected_value": ev_rounded
     }
 
+    logger.info(
+        "Evaluated dispute expected value",
+        amount=amount,
+        score=confidence_score,
+        p_win=p_win,
+        ev=ev_rounded,
+        decision=decision
+    )
+
     return ExpectedValueResult(
-        disputed_amount_inr=principal,
+        disputed_amount_inr=amount,
+        estimated_win_probability=p_win,
         p_win=p_win,
         issuer_fee_inr=fee,
         operational_cost_inr=cost,
         expected_value_inr=ev_rounded,
         decision=decision,
         is_profitable=is_profitable,
-        formula_breakdown=breakdown,
+        formula_breakdown=formula_breakdown,
         rationale=rationale
     )

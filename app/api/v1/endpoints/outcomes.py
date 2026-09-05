@@ -14,7 +14,7 @@ class DisputeOutcomeWebhook(BaseModel):
     event: str = Field(default="payment.dispute.won", description="payment.dispute.won | payment.dispute.lost")
     dispute_id: str = Field(..., description="Dispute ID")
     card_bin: Optional[str] = Field(default="424242", description="First 6 digits of card")
-    issuing_bank: Optional[str] = Field(default="HDFC / Chase", description="Name of issuing bank")
+    issuing_bank: Optional[str] = Field(default="Synthetic Issuer A", description="Name of issuing bank")
     network: str = Field(default="visa", description="visa | mastercard | rupay")
     reason_code: str = Field(default="10.4", description="Dispute reason code")
     outcome: Optional[str] = Field(None, description="won | lost")

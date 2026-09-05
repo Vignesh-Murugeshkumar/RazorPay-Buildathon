@@ -6,6 +6,7 @@ from app.core.logger import get_logger
 logger = get_logger("issuer_intelligence")
 
 
+# Future Architecture: BIN → issuer metadata provider → bank/network metadata
 class BINProfile(BaseModel):
     card_bin: str
     issuing_bank: str
@@ -21,20 +22,22 @@ class BINProfile(BaseModel):
         "w_gps": 10.0,
         "w_mfa": 5.0
     })
+    source: str = "synthetic_demo_data"
 
 
 class IssuerIntelligenceEngine:
     """
-    Issuer Intelligence & Closed-Loop ML Engine.
-    Continuously tracks empirical dispute resolution win-rates by issuing bank BIN (6-8 digits)
-    and dynamically adapts evidence weighting vectors (w_i).
+    Issuer Intelligence Engine (Demonstration Implementation).
+    Tracks demonstration dispute resolution win-rates by issuing bank BIN (6-8 digits)
+    and adapts evidence weighting vectors.
+    All baseline profiles use synthetic demonstration data.
     """
 
     DEFAULT_BIN_MAPPINGS = {
-        "424242": {"bank": "JPMorgan Chase / HDFC Bank", "win_rate": 0.92, "preferred": ["ce30_lookback", "device_fingerprint"]},
-        "512345": {"bank": "Citibank / ICICI Bank", "win_rate": 0.88, "preferred": ["carrier_signature", "gps"]},
-        "400000": {"bank": "State Bank of India", "win_rate": 0.84, "preferred": ["mfa_3ds", "ip_address"]},
-        "543210": {"bank": "Axis Bank / Wells Fargo", "win_rate": 0.79, "preferred": ["ce30_lookback", "carrier_signature"]}
+        "424242": {"bank": "Synthetic Issuer A", "win_rate": 0.92, "preferred": ["ce30_lookback", "device_fingerprint"]},
+        "512345": {"bank": "Synthetic Issuer B", "win_rate": 0.88, "preferred": ["carrier_signature", "gps"]},
+        "400000": {"bank": "Synthetic Issuer C", "win_rate": 0.84, "preferred": ["mfa_3ds", "ip_address"]},
+        "543210": {"bank": "Synthetic Issuer D", "win_rate": 0.79, "preferred": ["ce30_lookback", "carrier_signature"]}
     }
 
     def record_dispute_resolution(
@@ -57,7 +60,7 @@ class IssuerIntelligenceEngine:
             outcome_clean = "won" if "won" in outcome_clean else "lost"
 
         bin_clean = card_bin[:6] if card_bin else "424242"
-        bank_name = issuing_bank or self.DEFAULT_BIN_MAPPINGS.get(bin_clean, {}).get("bank", "Global Issuing Bank")
+        bank_name = issuing_bank or self.DEFAULT_BIN_MAPPINGS.get(bin_clean, {}).get("bank", "Synthetic Issuer A")
 
         db.save_dispute_outcome(
             dispute_id=dispute_id,
@@ -84,13 +87,14 @@ class IssuerIntelligenceEngine:
             "dispute_id": dispute_id,
             "card_bin": bin_clean,
             "issuing_bank": bank_name,
-            "outcome": outcome_clean
+            "outcome": outcome_clean,
+            "source": "synthetic_demo_data"
         }
 
     def get_bin_profile(self, card_bin: str) -> BINProfile:
         bin_clean = str(card_bin)[:6] if card_bin else "424242"
         default_info = self.DEFAULT_BIN_MAPPINGS.get(bin_clean, {
-            "bank": "Standard Issuing Bank",
+            "bank": "Synthetic Issuer A",
             "win_rate": 0.75,
             "preferred": ["ce30_lookback", "carrier_signature"]
         })
@@ -100,7 +104,7 @@ class IssuerIntelligenceEngine:
             total = len(outcomes)
             won = sum(1 for o in outcomes if o.get("outcome") == "won")
             lost = total - won
-            # Bayesian smoothing with empirical prior (pseudo-counts)
+            # Bayesian smoothing with prior pseudo-counts
             prior_rate = default_info.get("win_rate", 0.75)
             prior_weight = 4.0
             smoothed_rate = (won + (prior_rate * prior_weight)) / (total + prior_weight)
@@ -111,7 +115,6 @@ class IssuerIntelligenceEngine:
             lost = total - won
             rate = default_info["win_rate"]
 
-        # Adapt weights based on issuer preference
         weights = {
             "w_ce30": 55.0,
             "w_carrier": 35.0,
@@ -132,14 +135,11 @@ class IssuerIntelligenceEngine:
             lost_disputes=lost,
             win_rate=rate,
             preferred_evidence=default_info.get("preferred", []),
-            weights=weights
+            weights=weights,
+            source="synthetic_demo_data"
         )
 
     def get_issuer_win_rate_adjustment(self, card_bin: str) -> float:
-        """
-        Returns delta adjustment for P(win|x) based on issuer historical bias.
-        e.g. +0.05 for highly receptive banks, -0.05 for strict banks.
-        """
         profile = self.get_bin_profile(card_bin)
         delta = (profile.win_rate - 0.75) * 0.20
         return round(delta, 4)

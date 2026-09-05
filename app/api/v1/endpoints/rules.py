@@ -123,6 +123,12 @@ RULES_REGISTRY = {
     },
     "amex": {
         "network": "American Express",
+        "rule_status": "demo_implementation",
+        "source": "scheme_rules_reference",
+        "last_reviewed": None,
+        "implementation_notes": [
+            "Implementation for demonstration purposes; verify current scheme documentation before production use"
+        ],
         "regulations": [
             {
                 "id": "AMEX_INQUIRY_DEFENSE",
@@ -134,6 +140,19 @@ RULES_REGISTRY = {
     }
 }
 
+DISCLAIMER_TEXT = "Implementation for demonstration purposes; verify current scheme documentation before production use."
+
+# Inject accuracy metadata into each network
+for net_key, net_obj in RULES_REGISTRY.items():
+    net_obj["rule_status"] = "demo_implementation"
+    net_obj["source"] = "scheme_rules_reference"
+    net_obj["last_reviewed"] = None
+    net_obj["disclaimer"] = DISCLAIMER_TEXT
+    net_obj["implementation_notes"] = [
+        "Implementation for demonstration purposes; verify current scheme documentation before production use",
+        "Derived from card scheme reference specifications"
+    ]
+
 
 @router.get("/{network}")
 async def get_network_rules(network: str):
@@ -144,6 +163,8 @@ async def get_network_rules(network: str):
     net_clean = network.lower().strip()
     if net_clean == "all":
         return {
+            "disclaimer": DISCLAIMER_TEXT,
+            "rule_status": "demo_implementation",
             "networks": list(RULES_REGISTRY.keys()),
             "rules": RULES_REGISTRY
         }
@@ -154,4 +175,6 @@ async def get_network_rules(network: str):
             detail=f"Network '{network}' not supported. Supported networks: visa, mastercard, rupay, amex, all"
         )
     
-    return RULES_REGISTRY[net_clean]
+    res = dict(RULES_REGISTRY[net_clean])
+    res["disclaimer"] = DISCLAIMER_TEXT
+    return res
