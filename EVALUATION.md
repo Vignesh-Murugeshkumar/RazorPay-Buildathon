@@ -9,11 +9,18 @@
 
 A core requirement of the **AI Risk Manager** track is to demonstrate measured precision and recall on a held-out test set with honest metrics that evaluate false-positive costs, GMV recovery, and AI grounding.
 
+> [!WARNING]
+> **Prominent Benchmark Limitation**:  
+> The 115-case dataset is a **synthetic adversarial regression benchmark**. Figures reported for precision, recall, and defended GMV demonstrate deterministic pipeline behavior against parameterized scenarios. They should **NOT** be interpreted as evidence of real-world dispute win rates, actual financial recovery, or merchant production accuracy.
+
 ### Critical Evaluation Distinctions:
-To maintain complete scientific and engineering integrity, SentinelDispute clearly distinguishes three separate concepts:
-1. **Synthetic Deterministic Benchmark**: An automated 115-scenario test harness with parameterized synthetic disputes across 16 cohorts. Its purpose is deterministic regression testing, edge case coverage, and CI repeatability. Figures reported for recovered GMV represent a **defended-GMV proxy** based on scenario dispute amounts, not retrospective real-world recovered cash.
-2. **Real OpenAI Validation**: A small, representative 10-case evaluation subset across diverse dispute archetypes (defensible, non-defensible, borderline, missing evidence, contradictory evidence, hallucination trap, prompt injection, physical POD, SaaS digital goods, negative-EV). It evaluates structured output conformance, 2-pass self-challenge, and graceful fail-to-HITL. It does not claim statistical significance due to sample size.
-3. **Production Decision Architecture**: The real-time pipeline topology where AI is strictly advisory, the independent verifier enforces grounding, deterministic rules enforce Visa/Mastercard mandates, and the deterministic safety gate holds final financial authority.
+To maintain complete scientific and engineering integrity, SentinelDispute clearly distinguishes three separate validation tiers:
+1. **Synthetic System Regression**: An automated 115-scenario test harness with parameterized synthetic disputes across 16 cohorts. Its purpose is deterministic regression testing, edge case coverage, and CI repeatability. Figures reported for recovered GMV represent a **defended-GMV proxy** based on scenario dispute amounts, not retrospective real-world recovered cash.
+2. **LLM Reasoning Smoke Test**: A small, representative 10-case evaluation subset across diverse dispute archetypes (defensible, non-defensible, borderline, missing evidence, contradictory evidence, hallucination trap, prompt injection, physical POD, SaaS digital goods, negative-EV). It evaluates structured output conformance, 2-pass self-challenge, and graceful fail-to-HITL. It does not claim statistical significance due to sample size.
+3. **Production Validation**: **Not yet available.** Evaluating real-world accuracy, actual false positive rates, and true financial recovery requires historical merchant dispute resolution outcomes from real card scheme adjudications.
+
+### Win Probability Calibration Status:
+> **The current default estimator is an explicitly uncalibrated heuristic baseline.** Calibration infrastructure exists (`PlattScalingCalibratedEstimator`, Brier Score, ECE, Reliability Curves), but genuine empirical probability calibration strictly requires historical dispute outcomes from real payment gateway adjudications. The system refuses to activate calibrated weights until at least 50 real outcomes are ingested.
 
 ### The Chargeback Classification Matrix:
 - **True Positive (TP)**: A truly defensible chargeback correctly dispatched autonomously to the card network, defending merchant revenue.
@@ -126,27 +133,28 @@ SentinelDispute includes targeted adversarial tests verifying that all failure m
 
 ---
 
-## 6. Production Hardening (P0 Audit Completed)
+## 6. Production Hardening & Safety Architecture (Audit Completed)
 
-The following production-grade hardening measures have been implemented and tested:
+The following production-shaped hardening measures have been implemented and tested:
 
-| Area | Implementation | Tests |
-|------|---------------|-------|
-| **Win Probability Abstraction** | `BaseWinProbabilityEstimator` → `HeuristicBaselineEstimator` (explicitly `is_calibrated=False`) with Brier Score, ECE, and Cost-Sensitive calibration tooling | Evaluator unit tests |
-| **Deterministic Verifier** | Renamed to `DeterministicEvidenceVerifier` to eliminate "AI" mislabeling; versioned `PolicyExcerpt` provenance | Verifier unit tests |
-| **Database Fail-Closed** | PostgreSQL unavailability in production raises `RuntimeError`; no silent SQLite fallback | `test_production_readiness.py` |
-| **Tamper-Evident Audit Chain** | SHA-256 hash chain with monotonic index, payload hash, chain continuity validation | 7 tests in `test_audit_ledger.py` |
-| **Exception Hierarchy** | `SentinelError` → domain-specific exceptions with structured `FailureProvenance` | 2 tests in `test_failure_provenance.py` |
-| **Pipeline Circuit Breaker** | Any unhandled exception → HITL fallback with full provenance audit trail | `test_failure_provenance.py` |
-| **Async Queue Abstraction** | `InMemoryBackgroundQueue` with Fast-ACK HTTP 202, task polling endpoint | 4 tests in `test_async_queue.py` |
-| **PII Log Redaction** | Card numbers, emails, API keys, Bearer tokens, webhook secrets masked in all structured log output | 5 tests in `test_security.py` |
+| Area | Implementation | Current Status | Tests |
+|------|---------------|----------------|-------|
+| **Win Probability Abstraction** | `BaseWinProbabilityEstimator` → `HeuristicBaselineEstimator` (explicitly `is_calibrated=False`); `PlattScalingCalibratedEstimator` with Brier Score & ECE | 🟡 Prototype / Heuristic (Guarded $\ge 50$ real outcomes before calibration) | `test_probability_calibration.py` (10 tests) |
+| **Outcome Ingestion Pipeline** | `POST /disputes/outcomes/batch` + `GET /calibration/status` | 🟡 Prototype API | `test_probability_calibration.py` |
+| **Deterministic Verifier** | `DeterministicEvidenceVerifier` — 100% deterministic rule verification; versioned `PolicyExcerpt` provenance | ✅ Production-ready for current scope | `test_ai_verifier.py` (4 tests) |
+| **Database Fail-Closed** | PostgreSQL unavailability in production raises `RuntimeError`; no silent SQLite fallback | ✅ Production-ready for current scope | `test_database_fail_closed.py` (4 tests) |
+| **Tamper-Evident Audit Chain** | SHA-256 hash chain with monotonic index, payload hash, chain continuity validation | ✅ Production-ready for current scope | `test_audit_ledger.py` (7 tests) |
+| **Exception Hierarchy** | `SentinelError` → domain-specific exceptions with structured `FailureProvenance` | ✅ Production-ready for current scope | `test_failure_provenance.py` (2 tests) |
+| **Pipeline Circuit Breaker** | Any unhandled exception → HITL fallback with full provenance audit trail | ✅ Production-ready for current scope | `test_failure_provenance.py` |
+| **Async Queue Abstraction** | `InMemoryBackgroundQueue` reference worker + `RedisDisputeQueue` adapter with Fast-ACK HTTP 202 | 🟡 Production-shaped abstraction; in-memory reference worker is non-durable | `test_async_queue.py` (8 tests) |
+| **PII Log Redaction** | Card numbers, emails, API keys, Bearer tokens, webhook secrets masked in all structured log output | ✅ Production-ready for current scope | `test_security.py` (5 tests) |
 
 ---
 
 ## 7. How to Run the Benchmark & Reproduce Metrics
 
 ```bash
-# 1. Run the complete 118-test PyTest suite
+# 1. Run the complete 125-test PyTest suite
 pytest tests/ -v
 
 # 2. Run the 3-mode comparative benchmark across all 115 held-out scenarios (MockAI)

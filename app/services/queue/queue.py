@@ -1,10 +1,20 @@
 """
-Dispute Processing Queue Implementation.
+Dispute Processing Queue Architecture.
 
 Provides:
-1. Abstract base class `DisputeProcessingQueue` for pluggable broker backends (Redis/Celery/SQS).
-2. `InMemoryBackgroundQueue` using Python `concurrent.futures.ThreadPoolExecutor` for zero-infra local/dev/CI execution.
-3. Thread-safe task state tracking and Fast-ACK background execution.
+1. Abstract base class `DisputeProcessingQueue`: Production-shaped asynchronous broker
+   interface for background dispute execution.
+2. `InMemoryBackgroundQueue`: Production-shaped asynchronous queue abstraction with an
+   in-memory reference implementation using `ThreadPoolExecutor` for zero-infra local dev/CI.
+   
+OPERATIONAL BOUNDARIES OF IN-MEMORY REFERENCE QUEUE:
+- Tasks disappear on process restart or if a serverless container terminates.
+- Task state is local to a single process; multiple application instances cannot share state.
+- No durable retry queue, distributed locking, guaranteed delivery, or worker autoscaling.
+- Suitable for local development, CI, demonstrations, and deterministic testing.
+
+3. `RedisDisputeQueue`: Production-shaped Redis adapter with Dead Letter Queue (DLQ) support,
+   fail-closed production guards, and persistent task state hashing.
 """
 
 import uuid
@@ -52,9 +62,14 @@ class DisputeProcessingQueue(ABC):
 
 class InMemoryBackgroundQueue(DisputeProcessingQueue):
     """
-    In-Memory Background Worker Queue.
+    Production-shaped asynchronous queue abstraction with an in-memory reference implementation.
     Executes dispute pipelines asynchronously using a dedicated thread pool without requiring
-    external queue brokers (Redis, RabbitMQ, Celery) in serverless or CI environments.
+    external queue brokers in local development, CI, or demonstrations.
+
+    Explicit Limitations:
+    - Tasks disappear on process restart or if a serverless container terminates.
+    - State is local to a single Python process; not shared across multiple web workers.
+    - No distributed locking, durable retry queue, or guaranteed delivery.
     """
     def __init__(self, max_workers: int = 4):
         self._tasks: Dict[str, DisputeQueueTask] = {}

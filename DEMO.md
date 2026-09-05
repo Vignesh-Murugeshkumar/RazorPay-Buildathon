@@ -92,22 +92,22 @@
 
 ---
 
-### ⏱️ 4:15 – 5:00 | Scenario 5: Live 115-Scenario Held-Out Benchmark & Cryptographic Audit
+### ⏱️ 4:15 – 5:00 | Scenario 5: Live 115-Scenario Synthetic Benchmark & Cryptographic Audit
 **Speaker Script:**
-> *"To prove this isn't cherry-picked, we evaluate our system against a **115-dispute held-out benchmark suite** spanning 16 real-world cohorts (A through P). Let's run all 115 live right now."*
+> *"To demonstrate deterministic pipeline safety and edge-case resilience, we evaluate our system against a **115-scenario synthetic adversarial benchmark** spanning 16 edge-case cohorts (A through P). Let's run all 115 live right now."*
 
 **Live Action on Screen:**
 1. Click **`⚡ 115-Scenario Benchmark (A-P)`**.
 2. Wait ~9 seconds while 115 dispute state machines execute.
 3. When the alert appears, read out the verified metrics:
-   - **Evaluated**: 115 held-out scenarios
-   - **Precision (PPV)**: `100.00%` (45 True Positives, 0 False Positives)
+   - **Evaluated**: 115 synthetic scenarios
+   - **Precision (PPV)**: `100.00%` (45 True Positives, 0 False Positives under controlled tests)
    - **Recall**: `100.00%` (0 False Negatives)
    - **F1 Score**: `100.00%`
-   - **Recovered GMV**: `₹3,35,400.00` (62.1% net recovery)
-   - **False Positive Cost**: `₹0.00` (Zero money lost to penalties)
-   - **AI Grounding Rate**: `100.00%` (249/249 claims grounded)
+   - **Defended GMV Proxy**: `₹3,35,400.00` (62.1% net recovery proxy)
+   - **False Positive Penalty Cost**: `₹0.00` (Zero penalty bleed)
+   - **AI Grounding Rate**: `100.00%` (249/249 claims grounded in verified evidence)
    - **P50 Latency**: `69.26 ms`
 4. Navigate to the **`⛓️ Cryptographic Ledger`** tab and click **`🔍 Verify Full Chain Integrity`**:
-   - Show: `✅ Cryptographic Hash Chain 100% Intact (921 Blocks Verified)`.
+   - Show: `✅ Cryptographic Hash Chain 100% Intact (Tamper-Evidence Verified)`.
 5. **Closing:** *"SentinelDispute transforms chargeback defense from a manual money-losing chore into a mathematically rigorous, mathematically sound, AI-assisted risk engine. Thank you."*

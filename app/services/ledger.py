@@ -2,7 +2,8 @@
 SentinelDispute - Tamper-Evident Audit Hash Chain.
 
 Maintains an append-only SHA-256 cryptographic audit chain for dispute state transitions.
-Ensures legal auditability and non-repudiation of all financial decisions and policy evaluations.
+Provides mathematical tamper-evidence for financial decisions and policy evaluations by detecting
+unauthorized mutation, deletion, insertion, or reordering of transition records.
 Formula:
   h_n = SHA256(h_{n-1} || Timestamp_n || AgentID_n || StateTransition_n || PayloadHash_n)
 Genesis hash H_0 is initialized from verified webhook signature or deterministic genesis seed.
@@ -47,7 +48,8 @@ class LedgerIntegrityReport(BaseModel):
 class AuditLedger:
     """
     Append-Only SHA-256 Tamper-Evident Audit Hash Chain.
-    Ensures legal auditability and non-repudiation of dispute state transitions.
+    Provides mathematical tamper-evidence across dispute state transitions.
+    Detects unauthorized mutation, deletion, insertion, or reordering of transitions.
     Formula:
     h_n = SHA256(h_{n-1} || Timestamp_n || AgentID_n || StateTransition_n || PayloadHash_n)
     """

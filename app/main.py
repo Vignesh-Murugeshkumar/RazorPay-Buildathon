@@ -82,19 +82,42 @@ async def security_headers_middleware(request: Request, call_next):
     return response
 
 
+from app.core.exceptions import SentinelError
+
+# Domain Exception Handler
+@app.exception_handler(SentinelError)
+async def sentinel_exception_handler(request: Request, exc: SentinelError):
+    correlation_id = getattr(request.state, "correlation_id", str(uuid.uuid4()))
+    logger.warning("Domain exception encountered", correlation_id=correlation_id, error_code=exc.error_code, message=exc.message)
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={
+            "error": exc.error_code,
+            "message": exc.message,
+            "correlation_id": correlation_id
+        }
+    )
+
+
 # Global Sanitized Exception Handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     correlation_id = getattr(request.state, "correlation_id", str(uuid.uuid4()))
+    # Full diagnostic detail is recorded in structured internal logs only
     logger.error("Unhandled internal server exception", correlation_id=correlation_id, path=request.url.path, error=str(exc))
+    
+    response_body = {
+        "error": "Internal Server Error",
+        "message": "An unexpected error occurred while processing your request. Please reference the correlation_id with support.",
+        "correlation_id": correlation_id
+    }
+    # Never leak stack traces, database credentials, or provider secrets in production
+    if not settings.is_production:
+        response_body["detail"] = str(exc)
+
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "error": "Internal Server Error",
-            "message": "An unexpected error occurred while processing your request.",
-            "correlation_id": correlation_id,
-            "detail": str(exc)
-        }
+        content=response_body
     )
 
 

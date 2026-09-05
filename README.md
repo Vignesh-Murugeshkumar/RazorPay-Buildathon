@@ -14,10 +14,37 @@
 
 ## 📑 Core Documentation Directory
 
-- **[System Architecture & Trust Boundary (`ARCHITECTURE.md`)](ARCHITECTURE.md)**: Deep dive into the advisory-only AI boundary, local policy KB, AI verifier, deterministic safety gates, and adversarial threat model.
-- **[Empirical Evaluation & Benchmark (`EVALUATION.md`)](EVALUATION.md)**: 115-scenario held-out dataset evaluation (Cohorts A–P), confusion matrix, precision vs recall, financial GMV recovery, comparative modes, and AI grounding rates.
-- **[Production Readiness Assessment (`PRODUCTION_READINESS.md`)](PRODUCTION_READINESS.md)**: 12-domain gap analysis covering API security, database, AI provider, audit, async processing, PII protection, and deployment.
+- **[Known Limitations & System Boundaries (`LIMITATIONS.md`)](LIMITATIONS.md)**: **Mandatory reading.** Explicit audit of uncalibrated heuristics, synthetic benchmark scope, in-memory queue boundaries, and unproven claims.
+- **[Production Readiness Assessment (`PRODUCTION_READINESS.md`)](PRODUCTION_READINESS.md)**: 12-domain honest gap analysis distinguishing production-ready components from prototype-grade and infrastructure-dependent capabilities.
+- **[System Architecture & Trust Boundary (`ARCHITECTURE.md`)](ARCHITECTURE.md)**: Deep dive into the advisory-only AI boundary, local policy KB, deterministic verifier, safety gates, and adversarial threat model.
+- **[Empirical Evaluation & Benchmark (`EVALUATION.md`)](EVALUATION.md)**: 115-scenario synthetic held-out benchmark (Cohorts A–P), confusion matrix, comparative modes, and AI grounding rates.
 - **[5-Minute Presentation & Demo Script (`DEMO.md`)](DEMO.md)**: Complete pitch flow with timestamps, adversarial demonstration, and live benchmark walkthrough.
+
+---
+
+## ⚡ The 60-Second Senior Engineering Overview
+
+### What Problem Does It Solve?
+Automating cardholder dispute investigation and representment (Visa CE 3.0, Mastercard FPT) while preventing unsafe AI-driven financial actions. Erroneously auto-dispatching unprovable chargebacks triggers catastrophic **₹1,500–₹45,000 non-refundable bank arbitration penalties**.
+
+### What Makes It Technically Interesting?
+- **AI is Advisory-Only**: The LLM synthesizes evidence and cites policy, but has **zero execution authority** to authorize representment or move funds.
+- **Deterministic Evidence Verification**: An independent verifier validates that every AI claim is strictly grounded in raw transaction telemetry (`EV-001`..`EV-007`).
+- **Deterministic Safety Gate**: 100% deterministic code holds final financial authority, evaluating network rules, contradiction detection, and mathematical expected value ($E[V]$).
+- **Tamper-Evident SHA-256 Audit Chain**: Every state transition is cryptographically sealed in an append-only hash chain with automated tamper detection.
+
+### What is PROVEN?
+- ✅ **Deterministic safety behavior**: 100% precision on the 115-scenario synthetic adversarial benchmark (zero non-defensible cases bypassed the gate).
+- ✅ **Evidence provenance**: Strict grounding of all AI claims in verified telemetry with versioned policy citations.
+- ✅ **Webhook security**: Constant-time HMAC-SHA256, timestamp replay guard (300s window), and event ID deduplication.
+- ✅ **Audit integrity**: Verifiable tamper-detection across 7 mutation, deletion, insertion, and reordering test vectors.
+- ✅ **Fail-closed operations**: Pipeline crashes automatically route to HITL with structured `FailureProvenance`; database strictly refuses SQLite fallback in production.
+
+### What is NOT Proven?
+- ❌ **Real-world dispute win rate**: The 115-case benchmark is a synthetic regression suite, not live merchant dispute history.
+- ❌ **Production-scale throughput**: Asynchronous queue uses an in-memory reference implementation (`ThreadPoolExecutor`); a distributed broker (Redis/Celery) is required for enterprise scale.
+- ❌ **Statistically calibrated probabilities**: Default estimator is an expert heuristic baseline; true calibration requires historical settled dispute data.
+- ❌ **Real merchant financial savings**: Reported defended GMV is a synthetic financial proxy, not realized recovery cash.
 
 ---
 

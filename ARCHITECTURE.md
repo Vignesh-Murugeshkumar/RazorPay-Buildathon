@@ -69,7 +69,7 @@ SentinelDispute adheres to the **"Right Tool for the Right Process"** engineerin
 | **Network Rules** | `app.rules.visa_ce30` & `app.rules.mc_fpt` | Visa CE 3.0 lookback validation (120–365 days, 2 prior undisputed orders, IP/device matches); Mastercard First-Party Trust 3-tier matrix | **Deterministic Rule of Law** | Network rules are strict regulatory specifications; card schemes reject disputes that fail exact boolean constraints regardless of AI opinions. |
 | **Economics Engine** | `app.services.expected_value` | Calculates $E[V] = P(\text{win}\mid x) \cdot A - (1 - P(\text{win}\mid x)) \cdot F_{\text{fee}} - C_{\text{op}}$ | **Deterministic Threshold** | Defending small disputes (e.g. ₹300) with low probability risks ₹1,500 non-refundable issuer fees. Autonomous defense is only permitted when $E[V] > 0$ and $P(\text{win}) \ge 0.70$. |
 | **Safety Gate** | `DeterministicSafetyGate` | Final decision gatekeeper enforcing all 4 hard safety constraints | **Authoritative Decision Maker** | The final authority is 100% deterministic code. Overrides any hallucinating, compromised, or overconfident AI recommendation. |
-| **Audit Ledger** | `app.services.ledger` | SHA-256 cryptographic hash-chain recording every state transition, report hash, and rule evaluation | Tamper-evident ledger | Proves complete regulatory provenance and provides non-repudiation for audit and compliance. |
+| **Audit Ledger** | `app.services.ledger` | SHA-256 cryptographic hash-chain recording every state transition, report hash, and rule evaluation | Tamper-evident audit chain | Proves regulatory provenance and provides mathematical tamper-evidence for audit and compliance by detecting any post-hoc state alteration. |
 
 ---
 

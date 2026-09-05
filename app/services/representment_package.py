@@ -290,7 +290,7 @@ class RepresentmentPackageGenerator:
                     Paragraph(
                         f"<b>SHA-256 CRYPTOGRAPHIC PROOF SEAL:</b><br/>"
                         f"<font face='Courier' color='#00875A'>{dossier.sealed_hash}</font><br/>"
-                        f"<font size='7' color='#4F566B'>This representment packet is permanently sealed into the SentinelDispute SHA-256 immutable audit ledger. Any post-sealing alteration invalidates this digital certificate.</font>",
+                        f"<font size='7' color='#4F566B'>This representment packet is cryptographically sealed into the SentinelDispute SHA-256 tamper-evident audit chain. Any post-sealing alteration invalidates digital chain continuity.</font>",
                         body_style
                     )
                 ]
