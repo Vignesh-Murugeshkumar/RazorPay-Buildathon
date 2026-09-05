@@ -1,3 +1,13 @@
+"""
+SentinelDispute - Tamper-Evident Audit Hash Chain.
+
+Maintains an append-only SHA-256 cryptographic audit chain for dispute state transitions.
+Ensures legal auditability and non-repudiation of all financial decisions and policy evaluations.
+Formula:
+  h_n = SHA256(h_{n-1} || Timestamp_n || AgentID_n || StateTransition_n || PayloadHash_n)
+Genesis hash H_0 is initialized from verified webhook signature or deterministic genesis seed.
+"""
+
 import datetime
 import json
 import threading
@@ -14,6 +24,15 @@ class LedgerBlock(BaseModel):
     state_transition: str = Field(..., description="Name of the transition (e.g. INGRESS, EVALUATION, SEAL_AND_DISPATCH)")
     payload_hash: str = Field(..., description="SHA-256 digest of the state payload")
     block_hash: str = Field(..., description="Computed block hash: SHA256(prev_hash || timestamp || agent_id || transition || payload_hash)")
+    
+    # Granular Audit Provenance Metadata
+    event_id: Optional[str] = Field(None, description="Associated external Razorpay event ID")
+    dispute_id: Optional[str] = Field(None, description="Dispute identifier")
+    correlation_id: Optional[str] = Field(None, description="Request correlation ID")
+    actor: Optional[str] = Field(None, description="Actor or service initiating transition")
+    decision: Optional[str] = Field(None, description="Resulting financial or gate decision")
+    policy_version: Optional[str] = Field(None, description="Version of network policy evaluated")
+    model_version: Optional[str] = Field(None, description="AI model / engine version tag")
 
 
 class LedgerIntegrityReport(BaseModel):
@@ -27,11 +46,10 @@ class LedgerIntegrityReport(BaseModel):
 
 class AuditLedger:
     """
-    Append-Only SHA-256 Cryptographic Audit Chain Ledger.
+    Append-Only SHA-256 Tamper-Evident Audit Hash Chain.
     Ensures legal auditability and non-repudiation of dispute state transitions.
     Formula:
     h_n = SHA256(h_{n-1} || Timestamp_n || AgentID_n || StateTransition_n || PayloadHash_n)
-    Genesis hash H_0 is initialized from verified webhook signature or seed.
     """
     _instance = None
     _lock = threading.RLock()
@@ -67,7 +85,6 @@ class AuditLedger:
                     if persisted_blocks[0].index == 0:
                         self.chain = persisted_blocks
                     else:
-                        # Ensure genesis block 0 is prepended and persisted
                         if not self.chain or self.chain[0].index != 0:
                             self._init_genesis_block(self._genesis_seed, save_to_db=True)
                         else:
@@ -96,7 +113,9 @@ class AuditLedger:
             agent_id=agent_id,
             state_transition=transition,
             payload_hash=payload_hash,
-            block_hash=block_hash
+            block_hash=block_hash,
+            actor="SYSTEM_INIT",
+            decision="GENESIS"
         )
         self.chain = [genesis_block]
         if save_to_db:
@@ -110,7 +129,14 @@ class AuditLedger:
         self,
         agent_id: str,
         state_transition: str,
-        payload: Union[Dict[str, Any], List[Any], str, bytes]
+        payload: Union[Dict[str, Any], List[Any], str, bytes],
+        event_id: Optional[str] = None,
+        dispute_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+        actor: Optional[str] = None,
+        decision: Optional[str] = None,
+        policy_version: Optional[str] = None,
+        model_version: Optional[str] = None
     ) -> LedgerBlock:
         with self._lock:
             if isinstance(payload, (dict, list)):
@@ -136,7 +162,14 @@ class AuditLedger:
                 agent_id=agent_id,
                 state_transition=state_transition,
                 payload_hash=payload_hash,
-                block_hash=block_hash
+                block_hash=block_hash,
+                event_id=event_id,
+                dispute_id=dispute_id,
+                correlation_id=correlation_id,
+                actor=actor,
+                decision=decision,
+                policy_version=policy_version,
+                model_version=model_version
             )
             self.chain.append(new_block)
             try:
@@ -181,16 +214,18 @@ class AuditLedger:
             for i in range(len(self.chain)):
                 curr = self.chain[i]
                 
+                # Check 1: Monotonic sequential index (catches inserted or deleted blocks)
                 if curr.index != i:
                     return LedgerIntegrityReport(
                         is_valid=False,
                         total_blocks=len(self.chain),
                         genesis_hash=genesis_block.block_hash,
                         latest_hash=latest_block.block_hash,
-                        discrepancy_details=f"Block sequence mismatch at index {i}: expected {i}, found {curr.index}",
+                        discrepancy_details=f"Block sequence mismatch at position {i}: expected index {i}, found {curr.index}",
                         verified_at=verified_at
                     )
 
+                # Check 2: Hash chain continuity
                 if i > 0:
                     prev = self.chain[i - 1]
                     if curr.previous_hash != prev.block_hash:
@@ -203,6 +238,7 @@ class AuditLedger:
                             verified_at=verified_at
                         )
 
+                # Check 3: Block hash mathematical integrity (catches mutated fields or payloads)
                 raw_to_hash = f"{curr.previous_hash}||{curr.timestamp}||{curr.agent_id}||{curr.state_transition}||{curr.payload_hash}"
                 expected_hash = compute_sha256_hash(raw_to_hash)
                 if curr.block_hash != expected_hash:

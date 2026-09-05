@@ -242,6 +242,8 @@ class Dossier(BaseModel):
     ai_investigation: Optional[Dict[str, Any]] = None
     ai_verification: Optional[Dict[str, Any]] = None
     safety_gate: Optional[Dict[str, Any]] = None
+    failure_provenance: Optional[Dict[str, Any]] = None
+
 
 
 class DisputeSummary(BaseModel):

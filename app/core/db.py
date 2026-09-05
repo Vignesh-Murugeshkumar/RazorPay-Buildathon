@@ -102,11 +102,10 @@ class DatabaseManager:
             if getattr(self, "_initialized", False):
                 return
             is_prod = os.getenv("ENVIRONMENT", "development").lower() == "production"
-            is_serverless = bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV") or os.getenv("AWS_LAMBDA_FUNCTION_NAME") or os.path.exists("/tmp"))
             try:
                 self._init_db()
             except Exception as _e:
-                if is_prod and not is_serverless:
+                if is_prod:
                     logger.error("DatabaseManager initialization failed in PRODUCTION", error=str(_e))
                     raise RuntimeError(f"Production PostgreSQL required but connection failed: {_e}") from _e
                 logger.warning("DatabaseManager initialization failed or falling back to SQLite", error=str(_e))
@@ -117,11 +116,10 @@ class DatabaseManager:
         with self._lock:
             active_db_url = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DATABASE_URL") or os.getenv("POSTGRES_URL") or DATABASE_URL
             is_prod = os.getenv("ENVIRONMENT", "development").lower() == "production"
-            is_serverless = bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV") or os.getenv("AWS_LAMBDA_FUNCTION_NAME") or os.path.exists("/tmp"))
             is_test = os.getenv("ENVIRONMENT", "development").lower() in ("test", "testing") or os.getenv("TEST_MODE", "0") == "1"
             cleaned_url = sanitize_postgres_url(active_db_url) if not is_test else None
 
-            if is_prod and not cleaned_url and not is_serverless:
+            if is_prod and not cleaned_url:
                 raise RuntimeError(
                     "DATABASE_URL or SUPABASE_DATABASE_URL is strictly required in PRODUCTION environment. "
                     "Silent fallback to SQLite is disallowed."
@@ -253,10 +251,15 @@ class DatabaseManager:
                     logger.info("Connected and initialized Supabase (PostgreSQL) database successfully")
                     return
                 except Exception as e:
-                    if is_prod and not is_serverless:
-                        logger.error("Failed to connect to Supabase PostgreSQL in PRODUCTION", error=str(e))
-                        raise RuntimeError(f"Production PostgreSQL connection failed: {e}") from e
-                    logger.warning("Failed to connect to Supabase PostgreSQL, falling back to SQLite", error=str(e))
+                    # In production, strict fail-closed: NEVER silently fall back to SQLite
+                    env = os.getenv("ENVIRONMENT", "development").lower()
+                    if env == "production":
+                        logger.critical("Fatal: PostgreSQL connection failed in PRODUCTION mode. Failing closed.", error=str(e))
+                        raise RuntimeError(
+                            f"Production database initialization failed: {e}. "
+                            "SentinelDispute enforces fail-closed posture in production: embedded SQLite fallback is prohibited."
+                        ) from e
+                    logger.warning("Postgres unavailable in dev/test environment, falling back to local SQLite", error=str(e))
                     self._is_postgres = False
 
             # Fallback to Embedded SQLite
@@ -290,7 +293,14 @@ class DatabaseManager:
                         state_transition TEXT NOT NULL,
                         payload_hash TEXT NOT NULL,
                         block_hash TEXT NOT NULL,
-                        payload_json TEXT
+                        payload_json TEXT,
+                        event_id TEXT,
+                        dispute_id TEXT,
+                        correlation_id TEXT,
+                        actor TEXT,
+                        decision TEXT,
+                        policy_version TEXT,
+                        model_version TEXT
                     )
                 """)
                 cur.execute("""
@@ -314,6 +324,19 @@ class DatabaseManager:
                     try:
                         col_name = col_def.split()[0]
                         cur.execute(f"ALTER TABLE processed_events ADD COLUMN {col_def}")
+                    except Exception:
+                        pass
+                for col_def in [
+                    "event_id TEXT",
+                    "dispute_id TEXT",
+                    "correlation_id TEXT",
+                    "actor TEXT",
+                    "decision TEXT",
+                    "policy_version TEXT",
+                    "model_version TEXT"
+                ]:
+                    try:
+                        cur.execute(f"ALTER TABLE ledger_blocks ADD COLUMN {col_def}")
                     except Exception:
                         pass
                 cur.execute("""
@@ -656,8 +679,9 @@ class DatabaseManager:
                             cur.execute("""
                                 INSERT INTO ledger_blocks (
                                     block_index, previous_hash, timestamp, agent_id,
-                                    state_transition, payload_hash, block_hash, payload_json
-                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                    state_transition, payload_hash, block_hash, payload_json,
+                                    event_id, dispute_id, correlation_id, actor, decision, policy_version, model_version
+                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                                 ON CONFLICT (block_index) DO NOTHING;
                             """, (
                                 block.index,
@@ -667,7 +691,14 @@ class DatabaseManager:
                                 block.state_transition,
                                 block.payload_hash,
                                 block.block_hash,
-                                payload_json
+                                payload_json,
+                                block.event_id,
+                                block.dispute_id,
+                                block.correlation_id,
+                                block.actor,
+                                block.decision,
+                                block.policy_version,
+                                block.model_version
                             ))
                     return
                 except Exception as e:
@@ -680,8 +711,9 @@ class DatabaseManager:
                 cur.execute("""
                     INSERT OR REPLACE INTO ledger_blocks (
                         block_index, previous_hash, timestamp, agent_id,
-                        state_transition, payload_hash, block_hash, payload_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        state_transition, payload_hash, block_hash, payload_json,
+                        event_id, dispute_id, correlation_id, actor, decision, policy_version, model_version
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     block.index,
                     block.previous_hash,
@@ -690,7 +722,14 @@ class DatabaseManager:
                     block.state_transition,
                     block.payload_hash,
                     block.block_hash,
-                    payload_json
+                    payload_json,
+                    block.event_id,
+                    block.dispute_id,
+                    block.correlation_id,
+                    block.actor,
+                    block.decision,
+                    block.policy_version,
+                    block.model_version
                 ))
                 conn.commit()
                 conn.close()
@@ -707,7 +746,8 @@ class DatabaseManager:
                     with self._get_pg_conn(row_factory=dict_row) as conn:
                         with conn.cursor() as cur:
                             cur.execute("""
-                                SELECT block_index, previous_hash, timestamp, agent_id, state_transition, payload_hash, block_hash
+                                SELECT block_index, previous_hash, timestamp, agent_id, state_transition, payload_hash, block_hash,
+                                       event_id, dispute_id, correlation_id, actor, decision, policy_version, model_version
                                 FROM ledger_blocks
                                 ORDER BY block_index ASC
                             """)
@@ -721,7 +761,14 @@ class DatabaseManager:
                                         agent_id=r["agent_id"],
                                         state_transition=r["state_transition"],
                                         payload_hash=r["payload_hash"],
-                                        block_hash=r["block_hash"]
+                                        block_hash=r["block_hash"],
+                                        event_id=r.get("event_id"),
+                                        dispute_id=r.get("dispute_id"),
+                                        correlation_id=r.get("correlation_id"),
+                                        actor=r.get("actor"),
+                                        decision=r.get("decision"),
+                                        policy_version=r.get("policy_version"),
+                                        model_version=r.get("model_version")
                                     )
                                 )
                     return blocks
@@ -734,7 +781,8 @@ class DatabaseManager:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 cur.execute("""
-                    SELECT block_index, previous_hash, timestamp, agent_id, state_transition, payload_hash, block_hash
+                    SELECT block_index, previous_hash, timestamp, agent_id, state_transition, payload_hash, block_hash,
+                           event_id, dispute_id, correlation_id, actor, decision, policy_version, model_version
                     FROM ledger_blocks
                     ORDER BY block_index ASC
                 """)
@@ -749,7 +797,14 @@ class DatabaseManager:
                             agent_id=r["agent_id"],
                             state_transition=r["state_transition"],
                             payload_hash=r["payload_hash"],
-                            block_hash=r["block_hash"]
+                            block_hash=r["block_hash"],
+                            event_id=r["event_id"] if "event_id" in r.keys() else None,
+                            dispute_id=r["dispute_id"] if "dispute_id" in r.keys() else None,
+                            correlation_id=r["correlation_id"] if "correlation_id" in r.keys() else None,
+                            actor=r["actor"] if "actor" in r.keys() else None,
+                            decision=r["decision"] if "decision" in r.keys() else None,
+                            policy_version=r["policy_version"] if "policy_version" in r.keys() else None,
+                            model_version=r["model_version"] if "model_version" in r.keys() else None
                         )
                     )
             except Exception as e:

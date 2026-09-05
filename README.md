@@ -5,7 +5,7 @@
 
 [![Vercel Deployment](https://img.shields.io/badge/Vercel-Production%20Live-brightgreen?logo=vercel)](https://razor-pay-buildathon-pi.vercel.app/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-009688?logo=fastapi)](https://fastapi.tiangolo.com)
-[![PyTest Suite](https://img.shields.io/badge/PyTest-89%20Passed-success)](tests/)
+[![PyTest Suite](https://img.shields.io/badge/PyTest-118%20Passed-success)](tests/)
 [![Security](https://img.shields.io/badge/HMAC--SHA256-Constant--Time-brightgreen)](#cryptographic-security)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -15,6 +15,7 @@
 
 - **[System Architecture & Trust Boundary (`ARCHITECTURE.md`)](ARCHITECTURE.md)**: Deep dive into the advisory-only AI boundary, local policy KB, AI verifier, deterministic safety gates, and adversarial threat model.
 - **[Empirical Evaluation & Benchmark (`EVALUATION.md`)](EVALUATION.md)**: 115-scenario held-out dataset evaluation (Cohorts A–P), confusion matrix, precision vs recall, financial GMV recovery, comparative modes, and AI grounding rates.
+- **[Production Readiness Assessment (`PRODUCTION_READINESS.md`)](PRODUCTION_READINESS.md)**: 12-domain gap analysis covering API security, database, AI provider, audit, async processing, PII protection, and deployment.
 - **[5-Minute Presentation & Demo Script (`DEMO.md`)](DEMO.md)**: Complete pitch flow with timestamps, adversarial demonstration, and live benchmark walkthrough.
 
 ---
@@ -150,7 +151,7 @@ cd RazorPay-Buildathon
 pip install -r requirements.txt
 ```
 
-### 2. Run Test Suite (89 Tests)
+### 2. Run Test Suite (118 Tests)
 ```bash
 pytest tests/
 ```
@@ -189,6 +190,8 @@ Open **[http://localhost:8000](http://localhost:8000)** for the interactive dash
 | `GET` | `/api/v1/audit/blocks` | Inspect raw tamper-evident ledger blocks |
 | `POST` | `/api/v1/simulate` | Interactive dispute scenario simulation |
 | `POST` | `/api/v1/benchmark/run` | Execute 115-scenario held-out benchmark on demand |
+| `POST` | `/api/v1/webhook?async=true` | Fast-ACK async webhook ingress, returns HTTP 202 with `task_id` |
+| `GET` | `/api/v1/queue/tasks/{task_id}` | Poll async dispute processing task status |
 
 ---
 

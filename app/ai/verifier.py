@@ -1,20 +1,31 @@
 """
-SentinelDispute - AI Evidence & Policy Provenance Verifier.
+SentinelDispute - Deterministic Evidence & Provenance Verifier.
 
-Acts as an independent second-stage safety auditor over AI Investigation Reports.
-Catches hallucinated facts, nonexistent evidence IDs, ungrounded claims,
-unresolved contradictions, and fabricated policy citations.
-If the verifier fails, automatic representment is strictly blocked and routed to HITL.
+Acts as an independent, deterministic Python verification stage between the probabilistic
+LLM reasoning layer and the deterministic safety gate.
+Strictly validates:
+  1. Evidence IDs (EV-001..EV-007) exist in the normalized evidence package.
+  2. Evidence statuses (VERIFIED / PARTIALLY_VERIFIED).
+  3. No ungrounded assertions or hallucinated evidence tokens.
+  4. Absence of unresolved contradictory evidence citations.
+  5. Policy document IDs and versioned retrieval IDs match session-retrieved excerpts.
+  6. Material physical delivery and 3DS authentication assertions are backed by verified evidence.
+
+Architectural Trust Hierarchy:
+  - LLM = Probabilistic reasoning / structured advisory layer
+  - Verifier = Deterministic evidence & provenance safety boundary
+  - Rules & E[V] = Deterministic card network compliance & financial optimization
+  - Safety Gate = Final financial decision authority
 """
 
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from app.schemas.dispute import EvidenceItem, EvidenceStatus, EvidenceContradiction
-from app.ai.prompts import DisputeInvestigationReport
+from app.ai.prompts import DisputeInvestigationReport, AIClaimItem
 from app.ai.policy_kb import PolicyExcerpt
 from app.core.logger import get_logger
 
-logger = get_logger("ai_verifier")
+logger = get_logger("deterministic_verifier")
 
 
 class VerificationResult(BaseModel):
@@ -30,9 +41,9 @@ class VerificationResult(BaseModel):
     audit_summary: str = Field(..., description="Explainable audit statement")
 
 
-class AIEvidenceVerifier:
+class DeterministicEvidenceVerifier:
     """
-    Independent Verification Stage:
+    Deterministic Verification Stage:
     Enforces that the LLM/AI never invents facts, fabricates policy retrieval records,
     or bypasses deterministic policy.
     """
@@ -163,7 +174,7 @@ class AIEvidenceVerifier:
         ev_carrier = item_map.get("EV-004")
         has_verified_carrier = ev_carrier and ev_carrier.status in (EvidenceStatus.VERIFIED, EvidenceStatus.PARTIALLY_VERIFIED) and "EV-004" not in conflicted_ev_ids
         for claim in report.claims:
-            if "physical delivery" in claim.claim_text.lower() and not has_verified_carrier:
+            if ("physical delivery" in claim.claim_text.lower() or "carrier verified" in claim.claim_text.lower()) and not has_verified_carrier:
                 rejection_reasons.append("AI asserted physical delivery without verified carrier proof [EV-004]")
                 if claim.claim_text not in unsupported:
                     unsupported.append(claim.claim_text)
@@ -172,7 +183,7 @@ class AIEvidenceVerifier:
         ev_mfa = item_map.get("EV-003")
         has_verified_mfa = ev_mfa and ev_mfa.status == EvidenceStatus.VERIFIED and "EV-003" not in conflicted_ev_ids
         for claim in report.claims:
-            if "3ds" in claim.claim_text.lower() and not has_verified_mfa:
+            if ("3ds" in claim.claim_text.lower() or "liability shift" in claim.claim_text.lower()) and not has_verified_mfa:
                 rejection_reasons.append("AI asserted 3D Secure / MFA authentication without verified telemetry [EV-003]")
                 if claim.claim_text not in unsupported:
                     unsupported.append(claim.claim_text)
@@ -195,7 +206,7 @@ class AIEvidenceVerifier:
             )
 
         logger.info(
-            "AI evidence verification evaluated",
+            "Deterministic evidence verification evaluated",
             passed=passed,
             grounded_claims_ratio=round(grounding_ratio, 2),
             rejection_count=len(rejection_reasons)
@@ -215,4 +226,10 @@ class AIEvidenceVerifier:
         )
 
 
-ai_verifier = AIEvidenceVerifier()
+# Canonical naming for deterministic safety boundary
+DeterministicEvidenceVerifier = DeterministicEvidenceVerifier
+
+# Backward compatibility alias for existing test suites and imports
+AIEvidenceVerifier = DeterministicEvidenceVerifier
+deterministic_verifier = DeterministicEvidenceVerifier()
+ai_verifier = deterministic_verifier

@@ -126,10 +126,27 @@ SentinelDispute includes targeted adversarial tests verifying that all failure m
 
 ---
 
-## 6. How to Run the Benchmark & Reproduce Metrics
+## 6. Production Hardening (P0 Audit Completed)
+
+The following production-grade hardening measures have been implemented and tested:
+
+| Area | Implementation | Tests |
+|------|---------------|-------|
+| **Win Probability Abstraction** | `BaseWinProbabilityEstimator` → `HeuristicBaselineEstimator` (explicitly `is_calibrated=False`) with Brier Score, ECE, and Cost-Sensitive calibration tooling | Evaluator unit tests |
+| **Deterministic Verifier** | Renamed to `DeterministicEvidenceVerifier` to eliminate "AI" mislabeling; versioned `PolicyExcerpt` provenance | Verifier unit tests |
+| **Database Fail-Closed** | PostgreSQL unavailability in production raises `RuntimeError`; no silent SQLite fallback | `test_production_readiness.py` |
+| **Tamper-Evident Audit Chain** | SHA-256 hash chain with monotonic index, payload hash, chain continuity validation | 7 tests in `test_audit_ledger.py` |
+| **Exception Hierarchy** | `SentinelError` → domain-specific exceptions with structured `FailureProvenance` | 2 tests in `test_failure_provenance.py` |
+| **Pipeline Circuit Breaker** | Any unhandled exception → HITL fallback with full provenance audit trail | `test_failure_provenance.py` |
+| **Async Queue Abstraction** | `InMemoryBackgroundQueue` with Fast-ACK HTTP 202, task polling endpoint | 4 tests in `test_async_queue.py` |
+| **PII Log Redaction** | Card numbers, emails, API keys, Bearer tokens, webhook secrets masked in all structured log output | 5 tests in `test_security.py` |
+
+---
+
+## 7. How to Run the Benchmark & Reproduce Metrics
 
 ```bash
-# 1. Run the complete 89-test PyTest suite
+# 1. Run the complete 118-test PyTest suite
 pytest tests/ -v
 
 # 2. Run the 3-mode comparative benchmark across all 115 held-out scenarios (MockAI)
@@ -142,3 +159,4 @@ python tests/run_benchmark.py --mode sentinel --provider mock
 # Requires: export OPENAI_API_KEY="sk-..."
 python tests/run_benchmark.py --mode sentinel --provider openai --limit 10
 ```
+

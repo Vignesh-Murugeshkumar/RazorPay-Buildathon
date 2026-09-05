@@ -29,6 +29,7 @@ from app.ai.investigation_agent import investigation_agent
 from app.ai.verifier import ai_verifier, VerificationResult
 from app.ai.prompts import DisputeInvestigationReport
 from app.rules.safety_gate import safety_gate, SafetyGateDecision
+from app.core.logger import logger
 
 
 class DisputeState(TypedDict, total=False):
@@ -890,6 +891,120 @@ def auto_accept_agent_node(state: DisputeState) -> DisputeState:
     }
 
 
+def _build_failure_fallback_dossier(payload: DisputePayload, exc: Exception) -> Dossier:
+    from app.core.exceptions import SentinelError, FailureProvenance
+    import traceback
+    
+    dispute_id = getattr(payload, "dispute_id", "disp_unknown")
+    amount = getattr(payload, "amount_inr", 1000.0) or 1000.0
+    network = getattr(payload, "card_network", "visa")
+    reason = str(getattr(payload, "reason_code", "10.4"))
+
+    if isinstance(exc, SentinelError):
+        provenance = exc.to_provenance(action_taken="ROUTE_TO_HITL_QUEUE")
+    else:
+        provenance = FailureProvenance(
+            failure_type=exc.__class__.__name__,
+            component="WORKFLOW_SUPERVISOR",
+            dispute_id=dispute_id,
+            action_taken="ROUTE_TO_HITL_QUEUE",
+            reason=str(exc),
+            stack_summary=traceback.format_exc(limit=3)
+        )
+
+    logger.error(
+        f"Workflow execution failure: routing dispute {dispute_id} to HITL queue",
+        failure_id=provenance.failure_id,
+        failure_type=provenance.failure_type,
+        component=provenance.component,
+        reason=provenance.reason
+    )
+
+    timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    raw_hash_data = f"{dispute_id}||FAILSAFE||{provenance.failure_id}||{timestamp}"
+    sealed_hash = compute_sha256_hash(raw_hash_data)
+
+    try:
+        ledger.append_block(
+            agent_id="SYSTEM_FAILSAFE",
+            state_transition="WORKFLOW_ERROR_FALLBACK",
+            payload=provenance.to_audit_dict(),
+            dispute_id=dispute_id,
+            actor="FAILSAFE_SUPERVISOR",
+            decision="ROUTE_TO_HITL_QUEUE"
+        )
+    except Exception:
+        pass
+
+    try:
+        db.add_timeline_event(
+            dispute_id=dispute_id,
+            event_type="SYSTEM_FALLBACK",
+            title="Dispute Routed to HITL on Pipeline Error",
+            description=f"Automated execution encountered {provenance.failure_type} in {provenance.component}: {provenance.reason}. Routed to human analyst queue to fail safe.",
+            metadata=provenance.to_audit_dict()
+        )
+    except Exception:
+        pass
+
+    from app.schemas.dispute import RuleEvaluationResult, DecisionExplanation
+    evaluation = RuleEvaluationResult(
+        network=network,
+        reason_code=reason,
+        ce30_compliant=False,
+        fpt_compliant=False,
+        qualifying_orders_count=0,
+        carrier_verified=False,
+        digital_verified=False,
+        gps_verified=False,
+        mfa_verified=False,
+        confidence_score=0.0,
+        route_decision="ROUTE_TO_HITL_QUEUE",
+        diagnostic_gaps=[f"[SYSTEM_FAILSAFE] {provenance.failure_type} in {provenance.component}: {provenance.reason}"],
+        score_breakdown={"failsafe_fallback": 0.0},
+        evidence_category="FAILSAFE_ERROR"
+    )
+
+    explanation = DecisionExplanation(
+        summary=f"Fail-safe protection: workflow routed dispute to manual review queue due to {provenance.failure_type}.",
+        top_positive_factors=[],
+        top_negative_factors=[f"Workflow execution error: {provenance.reason}"],
+        confidence_breakdown={},
+        rule_applied="FAILSAFE_CIRCUIT_BREAKER",
+        estimated_win_probability=0.0,
+        win_probability=0.0,
+        expected_value_inr=0.0,
+        recommendation="Route to manual analyst queue for risk inspection",
+        ai_risk_assessment="ERROR_OCCURRED",
+        ai_recommended_action="HITL",
+        ai_verifier_status="SYSTEM_FAILSAFE",
+        safety_gate_alignment="OVERRIDE_TO_HITL"
+    )
+
+    return Dossier(
+        dispute_id=dispute_id,
+        payment_id=getattr(payload, "payment_id", "pay_unknown"),
+        amount_inr=amount,
+        card_network=network,
+        reason_code=reason,
+        confidence_score=0.0,
+        decision="ROUTE_TO_HITL_QUEUE",
+        evaluation=evaluation,
+        sealed_hash=sealed_hash,
+        timestamp=timestamp,
+        summary=f"Fail-Safe Routing: Routed to HITL review due to {provenance.failure_type} ({provenance.reason}).",
+        estimated_win_probability=0.0,
+        p_win=0.0,
+        win_probability=0.0,
+        expected_value=0.0,
+        expected_value_inr=0.0,
+        decision_explanation=explanation,
+        priority_score=95.0,
+        urgency="urgent",
+        failure_provenance=provenance.to_audit_dict()
+    )
+
+
 def execute_dispute_workflow(
     payload: DisputePayload,
     mode: str = "sentinel",
@@ -901,30 +1016,65 @@ def execute_dispute_workflow(
     - RULES_ONLY: Deterministic compliance rules + E[V] + Safety Gate without AI investigation.
     - AI_ONLY: Pure AI investigation recommendation directly used as final decision (Evaluation only! Not for production).
     """
-    mode_lower = mode.lower().strip()
-    initial_state: DisputeState = {
-        "payload": payload,
-        "dispute_id": payload.dispute_id,
-        "network": payload.card_network,
-        "reason_code": payload.reason_code,
-        "amount_inr": payload.amount_inr or 1000.0,
-        "ai_provider": ai_provider,
-        "logs": []
-    }
+    try:
+        mode_lower = mode.lower().strip()
+        initial_state: DisputeState = {
+            "payload": payload,
+            "dispute_id": payload.dispute_id,
+            "network": payload.card_network,
+            "reason_code": payload.reason_code,
+            "amount_inr": payload.amount_inr or 1000.0,
+            "ai_provider": ai_provider,
+            "logs": []
+        }
 
-    # MODE 1: RULES_ONLY (Deterministic compliance & Expected Value, zero AI)
-    if mode_lower in ("rules_only", "rules"):
+        # MODE 1: RULES_ONLY (Deterministic compliance & Expected Value, zero AI)
+        if mode_lower in ("rules_only", "rules"):
+            s1 = triage_agent_node(initial_state)
+            s2 = aggregator_agent_node(s1)
+            s5 = compliance_agent_node(s2)
+            s6 = economic_engine_agent_node(s5)
+            from app.ai.verifier import VerificationResult
+            s6["ai_investigation"] = None
+            s6["ai_verification"] = VerificationResult(
+                passed=True,
+                grounded_claims_ratio=1.0,
+                audit_summary="RULES_ONLY evaluation mode; AI verifier bypassed."
+            )
+            s7 = safety_gate_agent_node(s6)
+            next_node = gatekeeper_router(s7)
+            if next_node == "auto_dispatch_agent":
+                s8 = auto_dispatch_agent_node(s7)
+            elif next_node == "auto_accept_agent":
+                s8 = auto_accept_agent_node(s7)
+            else:
+                s8 = hitl_queue_agent_node(s7)
+            return s8["dossier"]
+
+        # MODE 2: AI_ONLY (Evaluation-only mode: uses AI recommendation directly, bypassing safety gate)
+        if mode_lower in ("ai_only", "ai"):
+            s1 = triage_agent_node(initial_state)
+            s2 = aggregator_agent_node(s1)
+            s3 = ai_investigation_agent_node(s2)
+            s5 = compliance_agent_node(s3)
+            s6 = economic_engine_agent_node(s5)
+            ai_rep = s3.get("ai_investigation")
+            ai_act = getattr(ai_rep, "recommended_action", "HITL") if ai_rep else "HITL"
+            if ai_act in ("AUTO_REPRESENT", "AUTO_DISPATCH"):
+                s8 = auto_dispatch_agent_node(s6)
+            elif ai_act in ("ACCEPT", "ACCEPT_LOSS"):
+                s8 = auto_accept_agent_node(s6)
+            else:
+                s8 = hitl_queue_agent_node(s6)
+            return s8["dossier"]
+
+        # MODE 3: SENTINEL (Production default: AI + Self-Challenge + Verifier + Rules + E[V] + Deterministic Safety Gate)
         s1 = triage_agent_node(initial_state)
         s2 = aggregator_agent_node(s1)
-        s5 = compliance_agent_node(s2)
+        s3 = ai_investigation_agent_node(s2)
+        s4 = ai_verifier_agent_node(s3)
+        s5 = compliance_agent_node(s4)
         s6 = economic_engine_agent_node(s5)
-        from app.ai.verifier import VerificationResult
-        s6["ai_investigation"] = None
-        s6["ai_verification"] = VerificationResult(
-            passed=True,
-            grounded_claims_ratio=1.0,
-            audit_summary="RULES_ONLY evaluation mode; AI verifier bypassed."
-        )
         s7 = safety_gate_agent_node(s6)
         next_node = gatekeeper_router(s7)
         if next_node == "auto_dispatch_agent":
@@ -933,41 +1083,11 @@ def execute_dispute_workflow(
             s8 = auto_accept_agent_node(s7)
         else:
             s8 = hitl_queue_agent_node(s7)
+
         return s8["dossier"]
 
-    # MODE 2: AI_ONLY (Evaluation-only mode: uses AI recommendation directly, bypassing safety gate)
-    if mode_lower in ("ai_only", "ai"):
-        s1 = triage_agent_node(initial_state)
-        s2 = aggregator_agent_node(s1)
-        s3 = ai_investigation_agent_node(s2)
-        s5 = compliance_agent_node(s3)
-        s6 = economic_engine_agent_node(s5)
-        ai_rep = s3.get("ai_investigation")
-        ai_act = getattr(ai_rep, "recommended_action", "HITL") if ai_rep else "HITL"
-        if ai_act in ("AUTO_REPRESENT", "AUTO_DISPATCH"):
-            s8 = auto_dispatch_agent_node(s6)
-        elif ai_act in ("ACCEPT", "ACCEPT_LOSS"):
-            s8 = auto_accept_agent_node(s6)
-        else:
-            s8 = hitl_queue_agent_node(s6)
-        return s8["dossier"]
+    except Exception as exc:
+        return _build_failure_fallback_dossier(payload, exc)
 
-    # MODE 3: SENTINEL (Production default: AI + Self-Challenge + Verifier + Rules + E[V] + Deterministic Safety Gate)
-    s1 = triage_agent_node(initial_state)
-    s2 = aggregator_agent_node(s1)
-    s3 = ai_investigation_agent_node(s2)
-    s4 = ai_verifier_agent_node(s3)
-    s5 = compliance_agent_node(s4)
-    s6 = economic_engine_agent_node(s5)
-    s7 = safety_gate_agent_node(s6)
-    next_node = gatekeeper_router(s7)
-    if next_node == "auto_dispatch_agent":
-        s8 = auto_dispatch_agent_node(s7)
-    elif next_node == "auto_accept_agent":
-        s8 = auto_accept_agent_node(s7)
-    else:
-        s8 = hitl_queue_agent_node(s7)
-
-    return s8["dossier"]
 
 

@@ -1,7 +1,7 @@
 import uuid
 import time
 from typing import Optional, Dict, Any
-from fastapi import APIRouter, Header, HTTPException, Request, Response, status
+from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, status
 
 from app.core.config import settings
 from app.core.security import verify_razorpay_webhook, validate_webhook_timestamp
@@ -10,6 +10,7 @@ from app.core.db import db
 from app.schemas.dispute import RazorpayDisputeWebhook, Dossier
 from app.graphs.dispute_graph import execute_dispute_workflow
 from app.services.ledger import ledger
+from app.services.queue import DisputeQueueTask, get_dispute_queue
 
 router = APIRouter(prefix="", tags=["Webhooks"])
 logger = get_logger("webhook_ingress")
@@ -37,14 +38,23 @@ async def handle_razorpay_dispute_webhook(
     request: Request,
     x_razorpay_signature: Optional[str] = Header(None, alias="X-Razorpay-Signature"),
     x_razorpay_event_id: Optional[str] = Header(None, alias="X-Razorpay-Event-Id"),
-    x_razorpay_event_time: Optional[str] = Header(None, alias="X-Razorpay-Event-Time")
+    x_razorpay_event_time: Optional[str] = Header(None, alias="X-Razorpay-Event-Time"),
+    x_process_async: Optional[str] = Header(None, alias="X-Process-Async"),
+    async_mode: Optional[bool] = Query(None, alias="async")
 ):
     """
     Production Ingress Point for Razorpay payment.dispute.created webhooks.
     Validates HMAC-SHA256 signature, timestamp tolerance, and replay nonces before invoking deterministic state graph.
+
+    Supports asynchronous Fast-ACK mode:
+    - Set header ``X-Process-Async: true`` or query param ``?async=true``
+    - Returns HTTP 202 Accepted with ``task_id`` immediately
+    - Dispute is processed in a background thread pool
+    - Poll ``GET /api/v1/queue/tasks/{task_id}`` for completion status
     """
     correlation_id = str(uuid.uuid4())
     raw_body = await request.body()
+    request_async = (x_process_async and x_process_async.lower() == "true") or (async_mode is True)
 
     # 0. Enforce Payload Size Limit (DDoS / Memory Exhaustion Guard)
     if len(raw_body) > settings.MAX_REQUEST_BODY_BYTES:
@@ -151,7 +161,11 @@ async def handle_razorpay_dispute_webhook(
             "payment_id": dispute_payload.payment_id,
             "signature_verified": bool(x_razorpay_signature),
             "event_id": x_razorpay_event_id
-        }
+        },
+        event_id=x_razorpay_event_id,
+        dispute_id=dispute_payload.dispute_id,
+        correlation_id=correlation_id,
+        actor="RAZORPAY_WEBHOOK"
     )
 
     logger.info(
@@ -163,7 +177,36 @@ async def handle_razorpay_dispute_webhook(
         amount=dispute_payload.amount_inr
     )
 
-    # 6. Execute Deterministic Python State Machine Workflow
+    # 6a. Async Fast-ACK Path: enqueue and return HTTP 202 immediately
+    if request_async:
+        task = DisputeQueueTask(
+            dispute_id=dispute_payload.dispute_id,
+            event_id=x_razorpay_event_id,
+            correlation_id=correlation_id
+        )
+        queue = get_dispute_queue()
+        task_id = queue.enqueue(task, payload_dict)
+
+        logger.info(
+            "Dispute enqueued for async processing (Fast-ACK)",
+            task_id=task_id,
+            dispute_id=dispute_payload.dispute_id,
+            correlation_id=correlation_id
+        )
+
+        return Response(
+            content=__import__("json").dumps({
+                "status": "accepted",
+                "correlation_id": correlation_id,
+                "task_id": task_id,
+                "dispute_id": dispute_payload.dispute_id,
+                "message": "Dispute accepted for background processing. Poll GET /api/v1/queue/tasks/{task_id} for status."
+            }),
+            status_code=status.HTTP_202_ACCEPTED,
+            media_type="application/json"
+        )
+
+    # 6b. Synchronous Execution Path (default)
     try:
         dossier = execute_dispute_workflow(dispute_payload)
         get_dossiers_db()[dossier.dispute_id] = dossier
@@ -188,4 +231,15 @@ async def handle_razorpay_dispute_webhook(
         if x_razorpay_event_id is not None:
             db.fail_webhook_event(x_razorpay_event_id, error_message=str(e))
         raise
+
+
+@router.get("/queue/tasks/{task_id}")
+async def get_queue_task_status(task_id: str):
+    """Poll endpoint for async dispute processing task status."""
+    queue = get_dispute_queue()
+    task = queue.get_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+    return task.model_dump()
+
 

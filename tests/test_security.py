@@ -69,3 +69,44 @@ def test_compute_sha256_hash():
     assert len(h1) == 64
     assert h1 == h2
 
+
+# ================= PII REDACTION TESTS =================
+from app.core.logger import _redact_value
+
+
+def test_pii_card_number_redacted():
+    """Full card numbers must be masked, preserving first and last groups."""
+    assert "****" in _redact_value("4242424242424242")
+    assert "4242" in _redact_value("4242424242424242")  # first 4 kept
+    assert "4242424242424242" not in _redact_value("4242424242424242")
+
+
+def test_pii_email_redacted():
+    """Email addresses must be fully masked."""
+    result = _redact_value("customer@razorpay.com")
+    assert "customer" not in result
+    assert "EMAIL_REDACTED" in result
+
+
+def test_pii_api_key_redacted():
+    """Razorpay API keys (rzp_...) must be masked after first 8 chars."""
+    result = _redact_value("rzp_live_1234567890abcdef")
+    assert "rzp_live" in result
+    assert "1234567890abcdef" not in result
+
+
+def test_pii_bearer_token_redacted():
+    """Bearer tokens must be fully masked."""
+    result = _redact_value("Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0")
+    assert "Bearer" in result
+    assert "eyJhbGciOiJIUzI1NiJ9" not in result
+    assert "REDACTED" in result
+
+
+def test_pii_webhook_secret_redacted():
+    """Webhook secrets (whsec_...) must be masked."""
+    result = _redact_value("whsec_test_super_secret_value_123")
+    assert "whsec_test" in result
+    assert "super_secret_value_123" not in result
+
+
