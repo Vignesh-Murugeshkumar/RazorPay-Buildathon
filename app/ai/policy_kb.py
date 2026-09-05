@@ -12,13 +12,22 @@ from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 
 
+import hashlib
+
 class PolicyExcerpt(BaseModel):
-    document_id: str
-    section_id: str
-    title: str
-    content: str
-    relevance_score: float
-    citation_text: str
+    retrieval_id: str = Field(default="", description="Unique session retrieval reference, e.g. RET-001")
+    document_id: str = Field(..., description="Canonical policy document ID, e.g. DOC-VISA-CE30")
+    section_id: str = Field(..., description="Policy section identifier, e.g. SEC-CE30-CORE")
+    title: str = Field(..., description="Human readable policy title")
+    content: str = Field(..., description="Full text excerpt of policy standard")
+    content_hash: str = Field(default="", description="SHA-256 cryptographic hash of policy content")
+    version: str = Field(default="2026.1", description="Policy version stamp")
+    relevance_score: float = Field(..., description="TF-IDF and domain match score")
+    citation_text: str = Field(..., description="Formal legal citation string")
+
+    @property
+    def section(self) -> str:
+        return self.section_id
 
 
 class PolicyKnowledgeBase:
@@ -165,12 +174,21 @@ class PolicyKnowledgeBase:
             if code_str in ("13.7", "4853") and "DOC-MERCHANT-TOS" in doc["document_id"]:
                 score += 0.30
 
+            st_lower = (service_type or "").lower()
+            if "physical" in st_lower and "DOC-CARRIER" in doc["document_id"]:
+                score += 0.35
+            elif "digital" in st_lower and "DOC-DIGITAL" in doc["document_id"]:
+                score += 0.35
+
             citation = f"[{doc['document_id']} § {doc['section_id']}] {doc['title']}"
+            c_hash = hashlib.sha256(doc["content"].encode("utf-8")).hexdigest()
             excerpt = PolicyExcerpt(
                 document_id=doc["document_id"],
                 section_id=doc["section_id"],
                 title=doc["title"],
                 content=doc["content"],
+                content_hash=c_hash,
+                version="2026.1",
                 relevance_score=round(score, 4),
                 citation_text=citation
             )
@@ -178,7 +196,10 @@ class PolicyKnowledgeBase:
 
         # Sort descending by relevance score
         scored_docs.sort(key=lambda d: d.relevance_score, reverse=True)
-        return scored_docs[:top_k]
+        top_excerpts = scored_docs[:top_k]
+        for idx, exc in enumerate(top_excerpts, 1):
+            exc.retrieval_id = f"RET-{idx:03d}"
+        return top_excerpts
 
 
 policy_knowledge_base = PolicyKnowledgeBase()

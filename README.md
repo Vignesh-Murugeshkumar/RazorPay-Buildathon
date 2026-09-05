@@ -13,9 +13,9 @@
 
 ## 📑 Core Documentation Directory
 
-- **[System Architecture & Trust Boundary (`ARCHITECTURE.md`)](file:///d:/PROJECTS/RAzorpay/RazorPay-Buildathon/ARCHITECTURE.md)**: Deep dive into the advisory-only AI boundary, local policy KB, AI verifier, deterministic safety gates, and adversarial threat model.
-- **[Empirical Evaluation & Benchmark (`EVALUATION.md`)](file:///d:/PROJECTS/RAzorpay/RazorPay-Buildathon/EVALUATION.md)**: 115-scenario held-out dataset evaluation (Cohorts A–P), confusion matrix, precision vs recall, financial GMV recovery, and AI grounding rates.
-- **[5-Minute Presentation & Demo Script (`DEMO.md`)](file:///d:/PROJECTS/RAzorpay/RazorPay-Buildathon/DEMO.md)**: Complete pitch flow with timestamps, adversarial demonstration, and live benchmark walkthrough.
+- **[System Architecture & Trust Boundary (`ARCHITECTURE.md`)](ARCHITECTURE.md)**: Deep dive into the advisory-only AI boundary, local policy KB, AI verifier, deterministic safety gates, and adversarial threat model.
+- **[Empirical Evaluation & Benchmark (`EVALUATION.md`)](EVALUATION.md)**: 115-scenario held-out dataset evaluation (Cohorts A–P), confusion matrix, precision vs recall, financial GMV recovery, comparative modes, and AI grounding rates.
+- **[5-Minute Presentation & Demo Script (`DEMO.md`)](DEMO.md)**: Complete pitch flow with timestamps, adversarial demonstration, and live benchmark walkthrough.
 
 ---
 
@@ -78,7 +78,10 @@ flowchart TD
 
 ## 📊 Measured Benchmark Results (115 Held-Out Scenarios)
 
-Evaluated against a held-out dataset of **115 dispute scenarios** across 16 adversarial and operational cohorts ([Categories A through P](file:///d:/PROJECTS/RAzorpay/RazorPay-Buildathon/EVALUATION.md)):
+Evaluated against a held-out dataset of **115 dispute scenarios** across 16 adversarial and operational cohorts ([Categories A through P](EVALUATION.md)).
+
+> [!NOTE]
+> **Evaluation Distinction**: These benchmark figures represent **synthetic scenario-defined evaluations** on a controlled, held-out dataset designed to test edge cases, contradictions, and policy compliance. The recovered GMV is a **defended-GMV proxy**, not a claim of retrospective real-world recovered cash.
 
 ```
                               ACTUAL POSITIVE        ACTUAL NEGATIVE
@@ -102,29 +105,43 @@ PREDICTED WITHHELD      |                         |                         |
 | **Gate Accuracy** | $\frac{TP + TN}{\text{Total}}$ | **100.00%** | Correctly gated all 115 disputes |
 | **False Positive Rate** | $\frac{FP}{FP + TN}$ | **0.00%** | Strict prevention of illegitimate auto-dispatches |
 | **Total Disputed GMV** | $\sum \text{Amount}$ | **₹5,40,024.00** | Complete held-out portfolio evaluated |
-| **Recovered GMV (TP)** | Net Recovery | **₹3,35,400.00** | **62.1% net capital protected** |
+| **Defended GMV Proxy (TP)** | Net Recovery Proxy | **₹3,35,400.00** | **62.1% net capital protected** |
 | **AI Evidence Grounding** | Grounded / Total | **100.00%** | 249/249 claims verified against valid `EV-xxx` tokens |
 | **Hallucination Traps** | Category O | **4 / 4 Caught** | 100% intercepted by AI Verifier |
 | **P50 Latency** | Execution Speed | **69.26 ms** | Fast real-time webhook turnaround |
-| **Cryptographic Ledger** | SHA-256 Chain | **100% Valid** | 921 blocks verified tamper-evident |
+| **Cryptographic Ledger** | SHA-256 Chain | **100% Valid** | Tamper-evident SHA-256 hash chain audit |
 
 ---
 
-## 🛡️ The Advisory-Only AI Boundary & Safety Gate
+## 🛡️ Two-Pass Self-Challenge & Deterministic Safety Gate
 
-To guarantee safety for payment gateways and merchants:
+To guarantee safety for payment gateways and merchants, SentinelDispute uses a **two-pass AI investigation with independent verification**:
 
-1. **Structured Outputs Only**: AI models emit Pydantic `DisputeInvestigationReport` objects with explicit `claim_id`, `evidence_ids`, and `policy_document_id`.
-2. **Independent Verifier**: `AIEvidenceVerifier` checks every claim against normalized `EvidenceItem` instances. Any hallucinated ID (e.g. `EV-999`) or unverified delivery claim fails verification.
-3. **Four Hard Gate Rules**:
-   - **Rule 1 (Verification)**: If AI verification fails $\rightarrow$ strictly force `HITL_REVIEW`.
-   - **Rule 2 (Contradiction)**: If objective contradiction detected (e.g. delivery marked true but tracking missing) $\rightarrow$ strictly force `HITL_REVIEW`.
-   - **Rule 3 (Economics)**: If $E[V] \le 0$ $\rightarrow$ auto-accept/refund to prevent ₹1,500 fee.
-   - **Rule 4 (Autonomous Representment)**: Permitted **only** when 100% verified, card-network compliant (Visa CE 3.0 or MC FPT), $E[V] > 0$, $P(\text{win}) \ge 0.70$, and confidence score $\ge 85.0$.
+```
+[Evidence & Policies] 
+        ↓
+Pass 1: Structured AI Investigation (Evidence Grounding, Win Probability, Reasoning Confidence)
+        ↓
+Pass 2: Adversarial Self-Challenge (Devil's Advocate, Alternative Interpretation, Confidence Adjustment)
+        ↓
+Independent AI Verifier (Audits hallucinated IDs, ungrounded claims, unretrieved policy citations)
+        ↓
+Deterministic Network Rules (Visa CE 3.0 / Mastercard FPT Engine)
+        ↓
+Expected Value Engine E[V] (Net recovery vs ₹1,500 non-refundable arbitration risk)
+        ↓
+Deterministic Safety Gate (Autonomous Action Authority: AUTO_REPRESENT | HITL | ACCEPT)
+```
+
+### Safety & Grounding Invariants:
+1. **Advisory-Only AI**: The LLM investigates and provides structured advice; it can **never** directly authorize representment or money movement.
+2. **Strict Verification**: If the verifier catches a single hallucinated evidence ID or ungrounded assertion, autonomous action is **strictly blocked**.
+3. **Fail-Safe Provider Error Handling**: If OpenAI errors or fails, the pipeline routes immediately to **HITL**. It **never** silently falls back to MockAI or pretends OpenAI succeeded.
+4. **Hard Gate Threshold**: Requires Verified Evidence + Valid Network Policy + $E[V] > 0$ + Win Prob $\ge 70\%$ + Confidence Score $\ge 85.0$.
 
 ---
 
-## 🚀 Quickstart & Local Setup
+## 🚀 Quickstart & Benchmark Commands
 
 ### 1. Installation
 ```bash
@@ -138,9 +155,17 @@ pip install -r requirements.txt
 pytest tests/
 ```
 
-### 3. Run Benchmark Suite (115 Scenarios)
+### 3. Run Benchmark Suite (Comparative & Single-Mode)
 ```bash
-python tests/run_benchmark.py
+# Run 3-mode comparative evaluation (RULES_ONLY vs AI_ONLY vs SENTINEL) on all 115 cases
+python tests/run_benchmark.py --mode all --provider mock
+
+# Run Sentinel full pipeline in mock mode
+python tests/run_benchmark.py --mode sentinel --provider mock
+
+# Run real OpenAI validation on 10 representative cases (Preserves API budget)
+# Requires OPENAI_API_KEY set in environment
+python tests/run_benchmark.py --mode sentinel --provider openai --limit 10
 ```
 
 ### 4. Start Dashboard Server

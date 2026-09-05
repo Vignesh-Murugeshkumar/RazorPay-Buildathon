@@ -5,7 +5,7 @@ Aggregates structured evidence, queries the local Policy Knowledge Base (RAG),
 and prompts the AI Provider to produce a structured, schema-validated risk analysis.
 """
 
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 from app.schemas.dispute import DisputePayload, EvidenceItem, EvidenceContradiction
 from app.ai.prompts import DisputeInvestigationReport
 from app.ai.policy_kb import policy_knowledge_base, PolicyExcerpt
@@ -30,7 +30,8 @@ class EvidenceInvestigationAgent:
         self,
         payload: DisputePayload,
         evidence_items: List[EvidenceItem],
-        contradictions: List[EvidenceContradiction]
+        contradictions: List[EvidenceContradiction],
+        provider: Optional[AIProvider] = None
     ) -> Tuple[DisputeInvestigationReport, str, List[PolicyExcerpt]]:
         """
         Executes an end-to-end evidence investigation:
@@ -41,6 +42,7 @@ class EvidenceInvestigationAgent:
 
         Returns: (DisputeInvestigationReport, report_sha256_hash, retrieved_policy_excerpts)
         """
+        active_provider = provider or self.provider
         query = (
             f"{payload.card_network} chargeback dispute reason {payload.reason_code} "
             f"service {payload.service_type} amount {payload.amount_inr}"
@@ -49,7 +51,8 @@ class EvidenceInvestigationAgent:
             query=query,
             card_network=payload.card_network,
             reason_code=str(payload.reason_code),
-            top_k=3
+            service_type=payload.service_type,
+            top_k=4
         )
 
         dispute_summary = {
@@ -89,7 +92,7 @@ class EvidenceInvestigationAgent:
 
         # Call provider with safe failover
         try:
-            report = self.provider.investigate(
+            report = active_provider.investigate(
                 dispute_summary=dispute_summary,
                 evidence_items=serialized_evidence,
                 contradictions=serialized_contradictions,
@@ -97,22 +100,34 @@ class EvidenceInvestigationAgent:
             )
         except Exception as exc:
             logger.error(f"AI Provider error during investigation: {exc}. Falling back to safe HITL review.")
-            citations = [p.citation_text for p in policy_excerpts]
+            from app.ai.prompts import MissingEvidenceItem, SelfChallengeReport
             report = DisputeInvestigationReport(
-                risk_assessment=f"Fail-safe activated: AI provider error ({type(exc).__name__}). Requiring human verification.",
-                confidence=0.30,
-                claim_summary="Automated risk investigation failed safely. Dispute routed for operational review.",
+                case_assessment="INSUFFICIENT_EVIDENCE",
+                win_probability=0.20,
+                reasoning_confidence=0,
+                strongest_evidence=[],
+                weakest_evidence=[],
                 claims=[],
-                supporting_evidence=[],
-                contradicting_evidence=[],
-                missing_evidence=[],
-                policy_citations=citations,
-                recommended_strategy="FAILOVER_MANUAL_REVIEW",
-                recommended_action="HITL_REVIEW",
-                reasoning_summary=f"Upstream AI provider error: {str(exc)[:120]}. System defaulted to safe human review.",
-                risk_flags=["AI_PROVIDER_ERROR", "FAILOVER_ROUTED"],
+                policy_analysis=[],
+                contradictions=[],
+                missing_evidence=[MissingEvidenceItem(
+                    requirement="Automated AI Analysis",
+                    reason=f"Provider error: {type(exc).__name__}. Safe failover to HITL."
+                )],
+                uncertainties=[f"Investigation interrupted by provider error: {str(exc)[:100]}"],
+                recommended_action="HITL",
+                reasoning=f"Fail-safe activated: AI provider error ({type(exc).__name__}). Dispute routed to HITL queue for manual review.",
+                self_challenge=SelfChallengeReport(
+                    vulnerabilities_found=[f"Provider error: {type(exc).__name__}"],
+                    weakest_requirement="Live LLM Availability",
+                    alternative_interpretation="Manual analyst adjudication required",
+                    adjustment_made=True,
+                    original_action="AUTO_REPRESENT",
+                    revised_action="HITL",
+                    rationale="Safe failover to human operator"
+                ),
                 provider_used="failover",
-                model_version="failover-v1"
+                model_version="failover-v2"
             )
 
         # Compute tamper-evident hash of the AI output

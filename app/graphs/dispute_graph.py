@@ -150,11 +150,13 @@ def ai_investigation_agent_node(state: DisputeState) -> DisputeState:
     payload = state["payload"]
     dispute_id = state["dispute_id"]
     items, contradictions, _ = extract_evidence_and_contradictions(payload)
+    custom_provider = state.get("ai_provider")
 
     report, report_hash, policy_excerpts = investigation_agent.investigate_dispute(
         payload=payload,
         evidence_items=items,
-        contradictions=contradictions
+        contradictions=contradictions,
+        provider=custom_provider
     )
 
     ledger.append_block(
@@ -888,20 +890,69 @@ def auto_accept_agent_node(state: DisputeState) -> DisputeState:
     }
 
 
-def execute_dispute_workflow(payload: DisputePayload) -> Dossier:
+def execute_dispute_workflow(
+    payload: DisputePayload,
+    mode: str = "sentinel",
+    ai_provider: Optional[Any] = None
+) -> Dossier:
     """
-    Executes the full dispute defense pipeline via deterministic sequential agents.
+    Executes the dispute defense pipeline across three supported modes:
+    - SENTINEL (default): Full defense pipeline (AI investigation + Self-Challenge + Verifier + Rules + E[V] + Safety Gate).
+    - RULES_ONLY: Deterministic compliance rules + E[V] + Safety Gate without AI investigation.
+    - AI_ONLY: Pure AI investigation recommendation directly used as final decision (Evaluation only! Not for production).
     """
+    mode_lower = mode.lower().strip()
     initial_state: DisputeState = {
         "payload": payload,
         "dispute_id": payload.dispute_id,
         "network": payload.card_network,
         "reason_code": payload.reason_code,
         "amount_inr": payload.amount_inr or 1000.0,
+        "ai_provider": ai_provider,
         "logs": []
     }
 
-    # Deterministic pipeline with AI investigation & verification
+    # MODE 1: RULES_ONLY (Deterministic compliance & Expected Value, zero AI)
+    if mode_lower in ("rules_only", "rules"):
+        s1 = triage_agent_node(initial_state)
+        s2 = aggregator_agent_node(s1)
+        s5 = compliance_agent_node(s2)
+        s6 = economic_engine_agent_node(s5)
+        from app.ai.verifier import VerificationResult
+        s6["ai_investigation"] = None
+        s6["ai_verification"] = VerificationResult(
+            passed=True,
+            grounded_claims_ratio=1.0,
+            audit_summary="RULES_ONLY evaluation mode; AI verifier bypassed."
+        )
+        s7 = safety_gate_agent_node(s6)
+        next_node = gatekeeper_router(s7)
+        if next_node == "auto_dispatch_agent":
+            s8 = auto_dispatch_agent_node(s7)
+        elif next_node == "auto_accept_agent":
+            s8 = auto_accept_agent_node(s7)
+        else:
+            s8 = hitl_queue_agent_node(s7)
+        return s8["dossier"]
+
+    # MODE 2: AI_ONLY (Evaluation-only mode: uses AI recommendation directly, bypassing safety gate)
+    if mode_lower in ("ai_only", "ai"):
+        s1 = triage_agent_node(initial_state)
+        s2 = aggregator_agent_node(s1)
+        s3 = ai_investigation_agent_node(s2)
+        s5 = compliance_agent_node(s3)
+        s6 = economic_engine_agent_node(s5)
+        ai_rep = s3.get("ai_investigation")
+        ai_act = getattr(ai_rep, "recommended_action", "HITL") if ai_rep else "HITL"
+        if ai_act in ("AUTO_REPRESENT", "AUTO_DISPATCH"):
+            s8 = auto_dispatch_agent_node(s6)
+        elif ai_act in ("ACCEPT", "ACCEPT_LOSS"):
+            s8 = auto_accept_agent_node(s6)
+        else:
+            s8 = hitl_queue_agent_node(s6)
+        return s8["dossier"]
+
+    # MODE 3: SENTINEL (Production default: AI + Self-Challenge + Verifier + Rules + E[V] + Deterministic Safety Gate)
     s1 = triage_agent_node(initial_state)
     s2 = aggregator_agent_node(s1)
     s3 = ai_investigation_agent_node(s2)
@@ -918,4 +969,5 @@ def execute_dispute_workflow(payload: DisputePayload) -> Dossier:
         s8 = hitl_queue_agent_node(s7)
 
     return s8["dossier"]
+
 
