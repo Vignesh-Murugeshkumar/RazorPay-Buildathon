@@ -13,7 +13,7 @@
 > 
 > *If an LLM hallucinates a tracking number, fabricates customer delivery, or auto-submits an indefensible dispute, the merchant loses both the transaction amount and a non-refundable ₹1,500 issuer dispute fee—or worse, ₹45,000 in card-brand pre-arbitration penalties.*
 > 
-> *Meet **SentinelDispute**: an autonomous chargeback defense engine built specifically for Razorpay merchants. Here, **the AI is strictly advisory**. The LLM investigates and formulates claims, an independent AI Verifier audits every claim against verified evidence IDs, and a **Deterministic Safety Gate** governs the final financial action. Zero hallucinations can ever authorize money movement."*
+> *Meet **SentinelDispute**: an autonomous chargeback defense engine built specifically for Razorpay merchants. Here, **the AI is strictly advisory**. The LLM investigates and formulates claims, a **Deterministic Evidence Verifier** audits every claim against verified evidence IDs, and a **Deterministic Safety Gate** governs the final financial action. Zero hallucinations can ever authorize money movement."*
 
 **Live Action on Screen:**
 - Show dashboard at `http://localhost:8000/`.
@@ -37,7 +37,7 @@
    - Show the **AI Risk Assessment**: *"Low Risk: Strong multi-factor corroboration across identity, fulfillment, and network rules."*
    - Show the **Grounded Factual Claims**: `[CL-001]` citing `EV-001`, `EV-002`, `EV-003` and policy document `DOC-VISA-CE30`.
    - Show the **Retrieved Local Policy Citations**: real Visa CE 3.0 excerpts (no fake RAG, no fake vector DB).
-   - Show the **AI Evidence Verifier**: `Verifier: PASSED (100% Grounded)`.
+   - Show the **Deterministic Evidence Verifier**: `Verifier: PASSED (100% Grounded)`.
 5. Click **`📄 PDF`** button: show the downloadable, signed legal representment document generated with cryptographic SHA-256 tamper-evident seal.
 
 ---
@@ -50,7 +50,7 @@
 1. Click **`🤖 AI Hallucination Trap (Cat O)`**:
    - The dispute claims delivery, but the actual logistics carrier proof is missing.
    - Click **`Inspect`**:
-     - The AI Verifier detects missing evidence.
+     - The **Deterministic Evidence Verifier** detects missing evidence.
      - The **Deterministic Safety Gate** overrides autonomous representment: `PRIMARY POLICY: SAFETY-GATE-NEGATIVE-EXPECTED-VALUE`.
      - Final verdict: `🛑 AUTO-ACCEPT / REFUND`.
      - Explain to judges: *"The system prevented an automatic ₹1,500 dispute fee by auto-accepting an unwinnable claim."*

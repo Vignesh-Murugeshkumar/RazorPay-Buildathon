@@ -17,7 +17,6 @@ from app.schemas.dispute import (
     EvidenceStatus
 )
 from app.graphs.dispute_graph import execute_dispute_workflow, extract_evidence_and_contradictions, calculate_hitl_priority
-from app.services.rag_rebuttal import rag_synthesizer
 from app.services.issuer_intelligence import issuer_intelligence
 from app.services.expected_value import calculate_expected_value
 

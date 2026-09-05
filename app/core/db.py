@@ -1140,7 +1140,7 @@ class DatabaseManager:
                 logger.error("Error saving pre-dispute log in SQLite", error=str(e))
                 return False
 
-    # ------------------ CLOSED-LOOP DISPUTE OUTCOMES ------------------
+    # ------------------ EMPIRICAL DISPUTE OUTCOMES & CALIBRATION ------------------
     def save_dispute_outcome(
         self,
         dispute_id: str,

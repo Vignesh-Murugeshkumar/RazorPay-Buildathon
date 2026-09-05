@@ -27,7 +27,7 @@ class DisputeOutcomeWebhook(BaseModel):
 async def record_dispute_resolution_outcome(payload: DisputeOutcomeWebhook):
     """
     Ingests payment gateway resolution outcomes (payment.dispute.won / payment.dispute.lost).
-    Feeds closed-loop ML model and updates BIN-level propensity scores and adaptive weights.
+    Feeds empirical calibration machinery and updates BIN-level propensity tracking and adaptive weights.
     """
     outcome_val = payload.outcome
     if not outcome_val:
@@ -49,13 +49,13 @@ async def record_dispute_resolution_outcome(payload: DisputeOutcomeWebhook):
         dispute_id=payload.dispute_id,
         event_type="OUTCOME_RECORDED",
         title=f"Dispute Resolution: {outcome_val.upper()}",
-        description=f"Dispute officially marked {outcome_val.upper()} by gateway. Closed-loop ML prior updated for BIN {payload.card_bin}.",
+        description=f"Dispute officially marked {outcome_val.upper()} by gateway. Empirical propensity updated for BIN {payload.card_bin}.",
         metadata={"outcome": outcome_val, "card_bin": payload.card_bin, "issuing_bank": payload.issuing_bank}
     )
 
     return {
         "status": "success",
-        "message": "Dispute outcome ingested into closed-loop ML engine",
+        "message": "Dispute outcome ingested into empirical calibration and BIN propensity tracker",
         "details": result
     }
 

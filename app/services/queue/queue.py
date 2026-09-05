@@ -1,20 +1,27 @@
 """
 Dispute Processing Queue Architecture.
 
-Provides:
-1. Abstract base class `DisputeProcessingQueue`: Production-shaped asynchronous broker
-   interface for background dispute execution.
-2. `InMemoryBackgroundQueue`: Production-shaped asynchronous queue abstraction with an
-   in-memory reference implementation using `ThreadPoolExecutor` for zero-infra local dev/CI.
-   
-OPERATIONAL BOUNDARIES OF IN-MEMORY REFERENCE QUEUE:
-- Tasks disappear on process restart or if a serverless container terminates.
-- Task state is local to a single process; multiple application instances cannot share state.
-- No durable retry queue, distributed locking, guaranteed delivery, or worker autoscaling.
-- Suitable for local development, CI, demonstrations, and deterministic testing.
+ARCHITECTURAL PRINCIPLE:
+"The decision engine does not depend on a specific queue implementation."
+The core SentinelDispute pipeline is completely decoupled from message transport
+and execution topology.
 
-3. `RedisDisputeQueue`: Production-shaped Redis adapter with Dead Letter Queue (DLQ) support,
-   fail-closed production guards, and persistent task state hashing.
+THREE-TIER DEPLOYMENT TAXONOMY:
+1. Local / CI:
+   `InMemoryBackgroundQueue`: In-process reference queue using `ThreadPoolExecutor`.
+   Zero infrastructure dependencies, deterministic testing, fast feedback.
+   *Boundary*: ThreadPoolExecutor is NOT a distributed worker architecture.
+   Tasks disappear on process termination; state is process-local.
+
+2. Production-Shaped Reference:
+   `RedisDisputeQueue`: Redis-backed FIFO queue (LPUSH/RPOP) with state persistence,
+   TTL expiration, retry tracking, and Dead Letter Queue (DLQ) for poison-pill tasks.
+   *Boundary*: Redis alone provides message transport and state persistence, NOT
+   complete worker orchestration, distributed consensus, or autoscaling.
+
+3. Enterprise Production:
+   Managed Redis (ElastiCache / MemoryDB) + independently orchestrated worker processes
+   (e.g., Celery / BullMQ / temporal workers run as separate Kubernetes Deployments or ECS tasks).
 """
 
 import uuid
@@ -141,15 +148,20 @@ class InMemoryBackgroundQueue(DisputeProcessingQueue):
                 dispute_id=task.dispute_id if task else "unknown",
                 error=str(exc)
             )
+            from app.core.config import settings
+            sanitized_err = (
+                str(exc) if not settings.is_production
+                else "Dispute processing failed during execution. Internal diagnostic recorded in audit ledger."
+            )
             with self._lock:
                 if task:
                     task.status = "FAILED"
                     task.completed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
-                    task.error = str(exc)
+                    task.error = sanitized_err
             if task and task.event_id:
                 try:
                     from app.core.db import db
-                    db.fail_webhook_event(task.event_id, error_message=str(exc))
+                    db.fail_webhook_event(task.event_id, error_message=sanitized_err)
                 except Exception:
                     pass
 
@@ -324,9 +336,14 @@ class RedisDisputeQueue(DisputeProcessingQueue):
 
         except Exception as exc:
             logger.error("Redis worker failed processing task", task_id=task_id, error=str(exc))
+            from app.core.config import settings
+            sanitized_err = (
+                str(exc) if not settings.is_production
+                else "Dispute processing failed during execution. Internal diagnostic recorded in audit ledger."
+            )
             task.status = "FAILED"
             task.completed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
-            task.error = str(exc)
+            task.error = sanitized_err
             self._redis.setex(
                 f"{self.TASK_KEY_PREFIX}{task_id}",
                 self.ttl_seconds,
@@ -339,7 +356,7 @@ class RedisDisputeQueue(DisputeProcessingQueue):
             if task.event_id:
                 try:
                     from app.core.db import db
-                    db.fail_webhook_event(task.event_id, error_message=str(exc))
+                    db.fail_webhook_event(task.event_id, error_message=sanitized_err)
                 except Exception:
                     pass
             return task

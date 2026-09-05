@@ -5,7 +5,7 @@ from app.core.db import db
 from app.services.pre_dispute import handle_pre_dispute_inquiry, matches_ce30_criteria
 from app.services.expected_value import calculate_expected_value, calibrate_win_probability
 from app.services.document_ocr import ocr_parser
-from app.services.rag_rebuttal import rag_synthesizer
+from app.services.rebuttal_synthesizer import rag_synthesizer
 from app.services.issuer_intelligence import issuer_intelligence
 from app.connectors.gateways import (
     RazorpayUPIAndRuPayAdapter,

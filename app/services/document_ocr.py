@@ -1,6 +1,6 @@
 import re
 import hashlib
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union
 from pydantic import BaseModel, Field
 from app.core.logger import get_logger
 
@@ -30,7 +30,7 @@ class DocumentOCRParser:
     """
 
     @staticmethod
-    def compute_doc_hash(content: bytes or str) -> str:
+    def compute_doc_hash(content: Union[bytes, str]) -> str:
         if isinstance(content, str):
             content = content.encode("utf-8")
         return hashlib.sha256(content).hexdigest()

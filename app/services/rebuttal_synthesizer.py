@@ -228,5 +228,6 @@ class RebuttalLetterSynthesizer:
 
 
 rule_constrained_synthesizer = RebuttalLetterSynthesizer()
-# Compatibility alias
+# Compatibility aliases
 rebuttal_synthesizer = rule_constrained_synthesizer
+rag_synthesizer = rebuttal_synthesizer

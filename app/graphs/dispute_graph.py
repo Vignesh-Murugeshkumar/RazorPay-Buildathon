@@ -12,8 +12,7 @@ from app.schemas.dispute import (
 from app.rules.card_rules import evaluate_dispute_compliance
 from app.rules.service_disputes import evaluate_service_dispute_compliance
 from app.services.expected_value import calculate_expected_value, ExpectedValueResult
-from app.services.rebuttal_synthesizer import rebuttal_synthesizer
-from app.services.rag_rebuttal import rag_synthesizer
+from app.services.rebuttal_synthesizer import rebuttal_synthesizer, rag_synthesizer
 from app.services.evidence_engine import (
     extract_evidence_and_contradictions,
     calculate_hitl_priority,
