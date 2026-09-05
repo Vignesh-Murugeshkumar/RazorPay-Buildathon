@@ -1196,10 +1196,10 @@ async function runSimulation(type) {
             await fetchStats();
             await fetchLedger();
             alert(`🛡️ Verifi Order Insight Pre-Dispute Interception Result:\nStatus: ${inqData.status}\nResponse Latency: ${inqData.response_time_ms} ms (SLA <= 2000ms: ${inqData.sla_guaranteed})\nEvidence: ${inqData.evidence_type}\nMessage: ${inqData.message}`);
-            return;
         } catch (err) {
             alert('Error running pre-dispute deflection simulation: ' + err.message);
             return;
+        }
     } else if (type === 'ai_hallucination_trap') {
         // AI Hallucination trap (Category O) - claims delivery but carrier proof is missing
         payload = {
