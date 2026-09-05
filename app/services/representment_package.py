@@ -1,9 +1,13 @@
 import io
 from typing import Dict, Any, Optional
-from reportlab.lib.pagesizes import letter
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+try:
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+    REPORTLAB_AVAILABLE = True
+except ImportError:
+    REPORTLAB_AVAILABLE = False
 
 from app.schemas.dispute import Dossier
 
@@ -76,6 +80,8 @@ class RepresentmentPackageGenerator:
     @classmethod
     def generate_package_pdf(cls, dossier: Dossier) -> bytes:
         """Generates a professional, bank-ready PDF representment packet using ReportLab."""
+        if not REPORTLAB_AVAILABLE:
+            raise RuntimeError("ReportLab is not installed or available in this runtime environment.")
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(
             buffer,

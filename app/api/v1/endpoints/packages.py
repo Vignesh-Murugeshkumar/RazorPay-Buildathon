@@ -32,7 +32,10 @@ async def get_representment_package_pdf(dispute_id: str):
     if not dossier:
         raise HTTPException(status_code=404, detail="Dispute dossier not found")
     
-    pdf_bytes = representment_package_generator.generate_package_pdf(dossier)
+    try:
+        pdf_bytes = representment_package_generator.generate_package_pdf(dossier)
+    except RuntimeError as err:
+        raise HTTPException(status_code=501, detail=str(err))
     filename = f"representment_{dispute_id}.pdf"
     
     return Response(
