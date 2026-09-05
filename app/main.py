@@ -112,6 +112,10 @@ app.add_middleware(
 # Include Modular API Routers
 app.include_router(api_v1_router)
 
+# Direct root-level webhook routing (supports Razorpay dashboard URLs configured as /webhooks/razorpay)
+from app.api.v1.endpoints.webhooks import router as webhooks_root_router
+app.include_router(webhooks_root_router)
+
 
 @app.get("/api/v1/health", tags=["System"])
 async def health_check(response: Response):

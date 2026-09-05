@@ -101,6 +101,31 @@ class RazorpayDisputeWebhook(BaseModel):
     @classmethod
     def normalize_amounts_and_telemetry(cls, values: Any) -> Any:
         if isinstance(values, dict):
+            # Support standard nested Razorpay webhook structure:
+            # {"event": "...", "payload": {"dispute": {"entity": {...}}}}
+            if "payload" in values and isinstance(values.get("payload"), dict):
+                dispute_wrapper = values["payload"].get("dispute", {})
+                entity = dispute_wrapper.get("entity", {}) if isinstance(dispute_wrapper, dict) else {}
+                if isinstance(entity, dict) and entity:
+                    if "dispute_id" not in values:
+                        values["dispute_id"] = entity.get("id") or entity.get("dispute_id")
+                    if "payment_id" not in values:
+                        values["payment_id"] = entity.get("payment_id")
+                    if "amount" not in values and "amount" in entity:
+                        raw_amt = float(entity["amount"])
+                        values["amount"] = raw_amt
+                        if "amount_inr" not in values:
+                            # Razorpay amounts are in paise (e.g. 250000 paise = 2500 INR)
+                            values["amount_inr"] = raw_amt / 100.0 if raw_amt >= 100 else raw_amt
+                    if "currency" not in values and "currency" in entity:
+                        values["currency"] = entity.get("currency", "INR")
+                    if "reason_code" not in values and "reason_code" in entity:
+                        values["reason_code"] = entity.get("reason_code", "10.4")
+                    if "status" not in values and "status" in entity:
+                        values["status"] = entity.get("status", "open")
+                    if "due_by" not in values and "due_by" in entity:
+                        values["due_by"] = entity.get("due_by")
+
             # Resolve amount vs amount_inr
             if "amount_inr" not in values or values.get("amount_inr") is None:
                 amt = values.get("amount", 0.0)
