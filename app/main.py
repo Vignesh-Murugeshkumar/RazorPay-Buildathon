@@ -231,10 +231,10 @@ async def remediate_dispute_evidence(dispute_id: str, remediation: RemediationEv
     if remediation.delivered_status is not None or remediation.tracking_number is not None:
         if raw_payload.carrier_proof is None:
             raw_payload.carrier_proof = CarrierProof(
-                carrier_name=remediation.carrier_name or "BlueDart",
-                tracking_number=remediation.tracking_number or f"TRK-{dispute_id[-6:]}",
-                delivered_status=remediation.delivered_status if remediation.delivered_status is not None else True,
-                recipient_signature_present=remediation.recipient_signature_present if remediation.recipient_signature_present is not None else True,
+                carrier_name=remediation.carrier_name,
+                tracking_number=remediation.tracking_number,
+                delivered_status=remediation.delivered_status if remediation.delivered_status is not None else False,
+                recipient_signature_present=remediation.recipient_signature_present if remediation.recipient_signature_present is not None else False,
                 gps_latitude=remediation.gps_latitude,
                 gps_longitude=remediation.gps_longitude,
                 verified_gps=remediation.verified_gps if remediation.verified_gps is not None else (remediation.gps_latitude is not None)

@@ -1,7 +1,7 @@
 import datetime
 import json
 import threading
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional, Dict, Any, Union, Tuple
 from pydantic import BaseModel, Field
 from app.core.security import compute_sha256_hash
 
@@ -64,7 +64,15 @@ class AuditLedger:
                 from app.core.db import db
                 persisted_blocks = db.load_all_ledger_blocks()
                 if persisted_blocks:
-                    self.chain = persisted_blocks
+                    if persisted_blocks[0].index == 0:
+                        self.chain = persisted_blocks
+                    else:
+                        # Ensure genesis block 0 is prepended and persisted
+                        if not self.chain or self.chain[0].index != 0:
+                            self._init_genesis_block(self._genesis_seed, save_to_db=True)
+                        else:
+                            db.save_ledger_block(self.chain[0], {"genesis_seed": self._genesis_seed})
+                        self.chain = [self.chain[0]] + [b for b in persisted_blocks if b.index > 0]
                 elif self.chain:
                     db.save_ledger_block(self.chain[0], {"genesis_seed": self._genesis_seed})
             except Exception:
@@ -215,6 +223,10 @@ class AuditLedger:
                 discrepancy_details=None,
                 verified_at=verified_at
             )
+
+    def verify_chain(self) -> Tuple[bool, Optional[str]]:
+        report = self.verify_integrity()
+        return report.is_valid, report.discrepancy_details
 
     def reset_for_tests(self, genesis_seed: Optional[str] = None):
         with self._lock:

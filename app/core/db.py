@@ -101,9 +101,13 @@ class DatabaseManager:
         with self._lock:
             if getattr(self, "_initialized", False):
                 return
+            is_prod = os.getenv("ENVIRONMENT", "development").lower() == "production"
             try:
                 self._init_db()
             except Exception as _e:
+                if is_prod:
+                    logger.error("DatabaseManager initialization failed in PRODUCTION", error=str(_e))
+                    raise RuntimeError(f"Production PostgreSQL required but connection failed: {_e}") from _e
                 logger.warning("DatabaseManager lazy initialization failed, falling back to SQLite", error=str(_e))
                 self._is_postgres = False
             self._initialized = True
@@ -111,8 +115,15 @@ class DatabaseManager:
     def _init_db(self):
         with self._lock:
             active_db_url = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DATABASE_URL") or os.getenv("POSTGRES_URL") or DATABASE_URL
+            is_prod = os.getenv("ENVIRONMENT", "development").lower() == "production"
             is_test = os.getenv("ENVIRONMENT", "development").lower() in ("test", "testing") or os.getenv("TEST_MODE", "0") == "1"
             cleaned_url = sanitize_postgres_url(active_db_url) if not is_test else None
+
+            if is_prod and not cleaned_url:
+                raise RuntimeError(
+                    "DATABASE_URL or SUPABASE_DATABASE_URL is strictly required in PRODUCTION environment. "
+                    "Silent fallback to SQLite is disallowed."
+                )
             if cleaned_url:
                 try:
                     import psycopg
@@ -240,6 +251,9 @@ class DatabaseManager:
                     logger.info("Connected and initialized Supabase (PostgreSQL) database successfully")
                     return
                 except Exception as e:
+                    if is_prod:
+                        logger.error("Failed to connect to Supabase PostgreSQL in PRODUCTION", error=str(e))
+                        raise RuntimeError(f"Production PostgreSQL connection failed: {e}") from e
                     logger.warning("Failed to connect to Supabase PostgreSQL, falling back to SQLite", error=str(e))
                     self._is_postgres = False
 
@@ -406,6 +420,12 @@ class DatabaseManager:
                     "error": str(e)
                 }
         else:
+            if os.getenv("ENVIRONMENT", "development").lower() == "production":
+                return {
+                    "healthy": False,
+                    "engine": "sqlite",
+                    "error": "PostgreSQL is strictly required in production environment; SQLite fallback is disallowed."
+                }
             try:
                 conn = sqlite3.connect(SQLITE_DB_PATH, timeout=5.0)
                 cur = conn.cursor()

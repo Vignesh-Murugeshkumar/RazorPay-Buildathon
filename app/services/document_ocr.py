@@ -49,16 +49,19 @@ class DocumentOCRParser:
         
         # Regex tracking number extraction
         tracking_match = re.search(r'(?:tracking|waybill|consignment|awb)\s*[:#]?\s*([A-Z0-9]{8,24})', raw_text, re.IGNORECASE)
-        tracking_num = tracking_match.group(1) if tracking_match else "BLUEDART99881122"
+        tracking_num = tracking_match.group(1) if tracking_match else None
 
         # Regex carrier identification
-        carrier = carrier_name or "BlueDart"
-        if "delhivery" in raw_text.lower():
-            carrier = "Delhivery"
-        elif "shiprocket" in raw_text.lower():
-            carrier = "Shiprocket"
-        elif "fedex" in raw_text.lower():
-            carrier = "FedEx"
+        carrier = carrier_name
+        if not carrier:
+            if "delhivery" in raw_text.lower():
+                carrier = "Delhivery"
+            elif "shiprocket" in raw_text.lower():
+                carrier = "Shiprocket"
+            elif "fedex" in raw_text.lower():
+                carrier = "FedEx"
+            elif "bluedart" in raw_text.lower():
+                carrier = "BlueDart"
 
         # Signature detection keywords
         has_sig = any(term in raw_text.lower() for term in ["signed by", "recipient signature", "signature present", "otp verified", "e-sign"])
@@ -67,10 +70,10 @@ class DocumentOCRParser:
             document_type="PROOF_OF_DELIVERY",
             carrier_name=carrier,
             tracking_number=tracking_num,
-            signature_present=has_sig or True,
+            signature_present=has_sig,
             gps_latitude=gps_lat,
             gps_longitude=gps_lng,
-            confidence_score=0.98,
+            confidence_score=0.98 if (tracking_num and carrier) else 0.50,
             document_hash=doc_hash
         )
 
@@ -92,7 +95,7 @@ class DocumentOCRParser:
         return ExtractedDocumentMetadata(
             document_type="TERMS_OF_SERVICE",
             policy_clause_matched=clause,
-            agreement_timestamp=acceptance_timestamp or "2026-01-15T10:00:00Z",
+            agreement_timestamp=acceptance_timestamp,
             recipient_name=customer_id,
             confidence_score=0.96,
             document_hash=doc_hash

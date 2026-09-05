@@ -43,7 +43,7 @@ class CustomerTelemetry(BaseModel):
 
 
 class CarrierProof(BaseModel):
-    carrier_name: Optional[str] = Field(default="BlueDart", description="Logistics partner name")
+    carrier_name: Optional[str] = Field(None, description="Logistics partner name")
     tracking_number: Optional[str] = Field(None, description="Shipment tracking number")
     delivered_status: bool = Field(default=False, description="True if marked delivered")
     delivery_date: Optional[str] = Field(None, description="Timestamp of physical delivery")

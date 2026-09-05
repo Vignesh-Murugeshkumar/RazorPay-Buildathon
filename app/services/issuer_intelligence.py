@@ -146,3 +146,4 @@ class IssuerIntelligenceEngine:
 
 
 issuer_intelligence = IssuerIntelligenceEngine()
+issuer_intel = issuer_intelligence
