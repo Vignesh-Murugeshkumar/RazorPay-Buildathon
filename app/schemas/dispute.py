@@ -123,6 +123,17 @@ class RuleEvaluationResult(BaseModel):
     evidence_category: str = "FRAUD_CE30_FPT"  # "FRAUD_CE30_FPT" | "SERVICE_DISPUTE_RAG" | "CANCELLATION_RAG"
 
 
+class DecisionExplanation(BaseModel):
+    summary: str
+    top_positive_factors: List[str] = Field(default_factory=list)
+    top_negative_factors: List[str] = Field(default_factory=list)
+    confidence_breakdown: Dict[str, float] = Field(default_factory=dict)
+    rule_applied: str = ""
+    win_probability: float = 0.0
+    expected_value_inr: float = 0.0
+    recommendation: str = ""
+
+
 class Dossier(BaseModel):
     dispute_id: str
     payment_id: str
@@ -143,6 +154,23 @@ class Dossier(BaseModel):
     p_win: Optional[float] = None
     rebuttal_letter: Optional[Dict[str, Any]] = None
 
+    # Evidence Intelligence
+    payment_authentication: Optional[str] = None
+    delivery_proof: Optional[Dict[str, Any]] = None
+    gps_verification: Optional[Dict[str, Any]] = None
+    mfa_verification: bool = False
+    ip_address: Optional[str] = None
+    device_info: Optional[Dict[str, Any]] = None
+    customer_history_summary: Optional[Dict[str, Any]] = None
+    digital_access_logs: Optional[Dict[str, Any]] = None
+
+    # Explainable AI & HITL
+    decision_explanation: Optional[DecisionExplanation] = None
+    assigned_to: Optional[str] = None
+    win_probability: Optional[float] = None
+    expected_value: Optional[float] = None
+    ev_breakdown: Optional[Dict[str, Any]] = None
+
 
 class DisputeSummary(BaseModel):
     dispute_id: str
@@ -156,3 +184,6 @@ class DisputeSummary(BaseModel):
     sealed_hash: str
     expected_value_inr: Optional[float] = None
     p_win: Optional[float] = None
+    win_probability: Optional[float] = None
+    expected_value: Optional[float] = None
+    assigned_to: Optional[str] = None

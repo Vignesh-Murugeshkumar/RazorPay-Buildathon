@@ -5,9 +5,12 @@ from app.schemas.dispute import (
     RazorpayDisputeWebhook,
     DisputePayload,
     RuleEvaluationResult,
+    DecisionExplanation,
     Dossier,
     DisputeSummary
 )
+from app.schemas.timeline import TimelineEvent
+from app.schemas.dashboard import DashboardSummary, NetworkBreakdown, ReasonCodeBreakdown
 
 __all__ = [
     "CustomerTelemetry",
@@ -16,6 +19,11 @@ __all__ = [
     "RazorpayDisputeWebhook",
     "DisputePayload",
     "RuleEvaluationResult",
+    "DecisionExplanation",
     "Dossier",
-    "DisputeSummary"
+    "DisputeSummary",
+    "TimelineEvent",
+    "DashboardSummary",
+    "NetworkBreakdown",
+    "ReasonCodeBreakdown",
 ]

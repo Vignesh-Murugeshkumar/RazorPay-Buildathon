@@ -44,6 +44,15 @@ async def record_dispute_resolution_outcome(payload: DisputeOutcomeWebhook):
         confidence_score=payload.confidence_score,
         evidence_types_used=payload.evidence_types_used
     )
+
+    db.add_timeline_event(
+        dispute_id=payload.dispute_id,
+        event_type="OUTCOME_RECORDED",
+        title=f"Dispute Resolution: {outcome_val.upper()}",
+        description=f"Dispute officially marked {outcome_val.upper()} by gateway. Closed-loop ML prior updated for BIN {payload.card_bin}.",
+        metadata={"outcome": outcome_val, "card_bin": payload.card_bin, "issuing_bank": payload.issuing_bank}
+    )
+
     return {
         "status": "success",
         "message": "Dispute outcome ingested into closed-loop ML engine",

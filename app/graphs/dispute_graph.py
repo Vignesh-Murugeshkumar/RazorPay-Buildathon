@@ -3,6 +3,7 @@ from typing import TypedDict, Optional, Dict, Any, List
 from app.schemas.dispute import (
     DisputePayload,
     RuleEvaluationResult,
+    DecisionExplanation,
     Dossier
 )
 from app.rules.card_rules import evaluate_dispute_compliance
@@ -11,6 +12,7 @@ from app.services.expected_value import calculate_expected_value, ExpectedValueR
 from app.services.rag_rebuttal import rag_synthesizer
 from app.services.issuer_intelligence import issuer_intelligence
 from app.services.ledger import ledger
+from app.core.db import db
 from app.core.security import compute_sha256_hash
 
 try:
@@ -65,6 +67,14 @@ def triage_agent_node(state: DisputeState) -> DisputeState:
         }
     )
     
+    db.add_timeline_event(
+        dispute_id=dispute_id,
+        event_type="WEBHOOK_RECEIVED",
+        title="Dispute Ingested",
+        description=f"Received dispute {dispute_id} for ₹{amount:,.2f} on {network.upper()} ({reason_code} - {category}).",
+        metadata={"payment_id": payload.payment_id, "network": network, "amount_inr": amount, "category": category}
+    )
+
     logs = state.get("logs", [])
     logs.append(f"Triaged dispute {dispute_id}: Network={network.upper()}, Reason={reason_code} ({category}), Amount=₹{amount:,.2f}")
     
@@ -100,6 +110,14 @@ def aggregator_agent_node(state: DisputeState) -> DisputeState:
             "carrier_status": carrier_status,
             "mfa_present": payload.telemetry.mfa_authenticated if payload.telemetry else False
         }
+    )
+
+    db.add_timeline_event(
+        dispute_id=dispute_id,
+        event_type="EVIDENCE_AGGREGATED",
+        title="Evidence & Telemetry Aggregated",
+        description=f"Aggregated {history_count} historical orders, Carrier delivery status: {carrier_status}.",
+        metadata={"history_count": history_count, "carrier_status": carrier_status}
     )
     
     logs = state.get("logs", [])
@@ -157,6 +175,14 @@ def compliance_agent_node(state: DisputeState) -> DisputeState:
             "category": evaluation.evidence_category,
             "gaps": evaluation.diagnostic_gaps
         }
+    )
+
+    db.add_timeline_event(
+        dispute_id=dispute_id,
+        event_type="RULES_EVALUATED",
+        title=f"{payload.card_network.upper()} Rules Evaluated",
+        description=f"Rule {evaluation.reason_code} evaluated. Confidence Score: {evaluation.confidence_score}/100.0 ({evaluation.evidence_category}).",
+        metadata={"confidence_score": evaluation.confidence_score, "category": evaluation.evidence_category}
     )
     
     logs = state.get("logs", [])
@@ -221,6 +247,14 @@ def economic_engine_agent_node(state: DisputeState) -> DisputeState:
         }
     )
 
+    db.add_timeline_event(
+        dispute_id=payload.dispute_id,
+        event_type="ECONOMIC_EVALUATED",
+        title="Expected Value Computed",
+        description=f"Computed E[V]: ₹{ev_result.expected_value_inr:,.2f} with P(win): {ev_result.p_win*100:.1f}%. Decision: {ev_result.decision}.",
+        metadata={"expected_value_inr": ev_result.expected_value_inr, "p_win": ev_result.p_win, "decision": ev_result.decision}
+    )
+
     logs = state.get("logs", [])
     logs.append(
         f"Economic E[V] Computed: E[V]=₹{ev_result.expected_value_inr:,.2f}, P(win)={ev_result.p_win*100:.1f}% -> Decision={ev_result.decision}"
@@ -251,6 +285,158 @@ def gatekeeper_router(state: DisputeState) -> str:
     return "hitl_queue_agent"
 
 
+def _create_dossier(state: DisputeState, decision: str, summary: str, sealed_hash: str, timestamp: str) -> Dossier:
+    payload = state["payload"]
+    dispute_id = state["dispute_id"]
+    evaluation = state["evaluation"]
+    ev_result = state.get("expected_value")
+    amount = payload.amount_inr or 1000.0
+
+    # 1. Evidence Intelligence fields
+    mfa_auth = bool(payload.telemetry and payload.telemetry.mfa_authenticated)
+    payment_auth_str = "3DS 2.2 Verified (Strong Customer Authentication)" if mfa_auth else "Frictionless / No MFA"
+    
+    delivery_proof_dict = None
+    if payload.carrier_proof:
+        delivery_proof_dict = {
+            "carrier_name": payload.carrier_proof.carrier_name,
+            "tracking_number": payload.carrier_proof.tracking_number,
+            "delivered_status": payload.carrier_proof.delivered_status,
+            "delivery_date": payload.carrier_proof.delivery_date,
+            "recipient_signature_present": payload.carrier_proof.recipient_signature_present
+        }
+        
+    gps_verification_dict = None
+    if payload.carrier_proof and payload.carrier_proof.gps_latitude is not None:
+        gps_verification_dict = {
+            "latitude": payload.carrier_proof.gps_latitude,
+            "longitude": payload.carrier_proof.gps_longitude,
+            "verified_within_50m": payload.carrier_proof.verified_gps
+        }
+
+    device_info_dict = None
+    if payload.telemetry:
+        device_info_dict = {
+            "device_id": payload.telemetry.device_id,
+            "session_id": payload.telemetry.session_id,
+            "user_agent": payload.telemetry.user_agent
+        }
+
+    history_summary_dict = {
+        "total_historical_orders": len(payload.historical_transactions),
+        "undisputed_count": sum(1 for h in payload.historical_transactions if h.undisputed),
+        "qualifying_orders_count": evaluation.qualifying_orders_count if evaluation else 0,
+        "total_amount_inr": sum(h.amount_inr for h in payload.historical_transactions)
+    }
+
+    digital_access_dict = None
+    if payload.digital_proof:
+        digital_access_dict = {
+            "service_type": payload.digital_proof.service_type,
+            "access_logs_verified": payload.digital_proof.access_logs_verified,
+            "download_timestamp": payload.digital_proof.download_timestamp,
+            "user_account_active": payload.digital_proof.user_account_active,
+            "ip_subnet_matched": payload.digital_proof.ip_subnet_matched
+        }
+
+    # 2. Decision Explanation
+    positive_factors = []
+    negative_factors = []
+    
+    if evaluation.ce30_compliant:
+        positive_factors.append("Visa CE 3.0 Compelling Evidence Qualified with prior undisputed orders")
+    if evaluation.fpt_compliant:
+        positive_factors.append("Mastercard First-Party Trust (FPT) qualified with confirmed historical orders")
+    if evaluation.carrier_verified:
+        positive_factors.append("Physical delivery verified by carrier with recipient signature")
+    if evaluation.gps_verified:
+        positive_factors.append("Delivery GPS coordinate match within 50m radius of cardholder address")
+    if evaluation.digital_verified:
+        positive_factors.append("Digital server access logs confirm active cardholder consumption")
+    if evaluation.mfa_verified:
+        positive_factors.append("Two-Factor Authentication / 3DS Verified (Liability Shift)")
+    if ev_result and ev_result.is_profitable:
+        positive_factors.append(f"Net recovery positive E[V] (+₹{ev_result.expected_value_inr:,.2f}) with {ev_result.p_win*100:.1f}% win probability")
+    elif not positive_factors:
+        positive_factors.append("Standard dispute ingestion metadata validated")
+
+    if evaluation.diagnostic_gaps:
+        negative_factors.extend(evaluation.diagnostic_gaps)
+    if ev_result and not ev_result.is_profitable:
+        negative_factors.append(f"Unfavorable E[V] (₹{ev_result.expected_value_inr:,.2f}): non-refundable dispute fee exceeds recovery potential")
+    if not mfa_auth:
+        negative_factors.append("No 3DS/MFA authentication recorded at checkout (merchant liability)")
+
+    p_win = ev_result.p_win if ev_result else (evaluation.p_win or 0.0)
+    ev_inr = ev_result.expected_value_inr if ev_result else (evaluation.expected_value_inr or 0.0)
+
+    recommendation = "Submit automated representment package immediately"
+    if decision == "ROUTE_TO_HITL_QUEUE":
+        recommendation = "Route to human analyst review queue to resolve identified evidence gaps"
+    elif decision == "AUTO_ACCEPT_OR_REFUND":
+        recommendation = "Accept dispute or refund to prevent non-refundable issuer arbitration fees"
+
+    explanation = DecisionExplanation(
+        summary=summary,
+        top_positive_factors=positive_factors,
+        top_negative_factors=negative_factors,
+        confidence_breakdown=evaluation.score_breakdown or {},
+        rule_applied=f"{evaluation.network.upper()} {evaluation.reason_code} ({evaluation.evidence_category})",
+        win_probability=p_win,
+        expected_value_inr=ev_inr,
+        recommendation=recommendation
+    )
+
+    ev_breakdown_dict = None
+    if ev_result:
+        ev_breakdown_dict = {
+            "amount_inr": amount,
+            "p_win": ev_result.p_win,
+            "gross_recovery": round(ev_result.p_win * amount, 2),
+            "issuer_fee_inr": ev_result.issuer_fee_inr,
+            "risk_adjusted_fee": round((1.0 - ev_result.p_win) * ev_result.issuer_fee_inr, 2),
+            "operational_cost_inr": ev_result.operational_cost_inr,
+            "expected_value_inr": ev_result.expected_value_inr,
+            "is_profitable": ev_result.is_profitable
+        }
+
+    return Dossier(
+        dispute_id=dispute_id,
+        payment_id=payload.payment_id,
+        amount_inr=amount,
+        card_network=payload.card_network,
+        reason_code=payload.reason_code,
+        confidence_score=evaluation.confidence_score,
+        decision=decision,
+        evaluation=evaluation,
+        sealed_hash=sealed_hash,
+        timestamp=timestamp,
+        telemetry=payload.telemetry,
+        carrier_proof=payload.carrier_proof,
+        digital_proof=payload.digital_proof,
+        historical_count=len(payload.historical_transactions),
+        summary=summary,
+        expected_value_inr=ev_inr,
+        p_win=p_win,
+        rebuttal_letter=state.get("rebuttal_letter"),
+        # Evidence Intelligence
+        payment_authentication=payment_auth_str,
+        delivery_proof=delivery_proof_dict,
+        gps_verification=gps_verification_dict,
+        mfa_verification=mfa_auth,
+        ip_address=payload.telemetry.ip_address if payload.telemetry else "127.0.0.1",
+        device_info=device_info_dict,
+        customer_history_summary=history_summary_dict,
+        digital_access_logs=digital_access_dict,
+        # Explainability & HITL
+        decision_explanation=explanation,
+        assigned_to=None,
+        win_probability=p_win,
+        expected_value=ev_inr,
+        ev_breakdown=ev_breakdown_dict
+    )
+
+
 def auto_dispatch_agent_node(state: DisputeState) -> DisputeState:
     """
     Auto-Dispatch & Sealing Agent:
@@ -274,25 +460,12 @@ def auto_dispatch_agent_node(state: DisputeState) -> DisputeState:
         f"regulatory specifications ({evaluation.reason_code}). Sealed under SHA-256 cryptographic proof."
     )
     
-    dossier = Dossier(
-        dispute_id=dispute_id,
-        payment_id=payload.payment_id,
-        amount_inr=payload.amount_inr or 1000.0,
-        card_network=payload.card_network,
-        reason_code=payload.reason_code,
-        confidence_score=evaluation.confidence_score,
+    dossier = _create_dossier(
+        state=state,
         decision="AUTO_DISPATCHED",
-        evaluation=evaluation,
-        sealed_hash=sealed_hash,
-        timestamp=timestamp,
-        telemetry=payload.telemetry,
-        carrier_proof=payload.carrier_proof,
-        digital_proof=payload.digital_proof,
-        historical_count=len(payload.historical_transactions),
         summary=summary,
-        expected_value_inr=ev_result.expected_value_inr if ev_result else None,
-        p_win=ev_result.p_win if ev_result else None,
-        rebuttal_letter=state.get("rebuttal_letter")
+        sealed_hash=sealed_hash,
+        timestamp=timestamp
     )
     
     ledger.append_block(
@@ -305,6 +478,14 @@ def auto_dispatch_agent_node(state: DisputeState) -> DisputeState:
             "expected_value_inr": ev_result.expected_value_inr if ev_result else None,
             "sealed_hash": sealed_hash
         }
+    )
+
+    db.add_timeline_event(
+        dispute_id=dispute_id,
+        event_type="DECISION_SEALED",
+        title="Decision Sealed: Auto-Dispatched",
+        description=f"Autonomous representment dispatched and sealed under SHA-256 hash {sealed_hash[:16]}...",
+        metadata={"decision": "AUTO_DISPATCHED", "sealed_hash": sealed_hash, "confidence_score": evaluation.confidence_score}
     )
     
     logs = state.get("logs", [])
@@ -339,25 +520,12 @@ def hitl_queue_agent_node(state: DisputeState) -> DisputeState:
         f"Actionable Gaps Identified: {gaps_str}."
     )
     
-    dossier = Dossier(
-        dispute_id=dispute_id,
-        payment_id=payload.payment_id,
-        amount_inr=payload.amount_inr or 1000.0,
-        card_network=payload.card_network,
-        reason_code=payload.reason_code,
-        confidence_score=evaluation.confidence_score,
+    dossier = _create_dossier(
+        state=state,
         decision="ROUTE_TO_HITL_QUEUE",
-        evaluation=evaluation,
-        sealed_hash=sealed_hash,
-        timestamp=timestamp,
-        telemetry=payload.telemetry,
-        carrier_proof=payload.carrier_proof,
-        digital_proof=payload.digital_proof,
-        historical_count=len(payload.historical_transactions),
         summary=summary,
-        expected_value_inr=ev_result.expected_value_inr if ev_result else None,
-        p_win=ev_result.p_win if ev_result else None,
-        rebuttal_letter=state.get("rebuttal_letter")
+        sealed_hash=sealed_hash,
+        timestamp=timestamp
     )
     
     ledger.append_block(
@@ -369,6 +537,14 @@ def hitl_queue_agent_node(state: DisputeState) -> DisputeState:
             "confidence_score": evaluation.confidence_score,
             "gaps": evaluation.diagnostic_gaps
         }
+    )
+
+    db.add_timeline_event(
+        dispute_id=dispute_id,
+        event_type="DECISION_SEALED",
+        title="Decision Sealed: Routed to HITL",
+        description=f"Routed to human review queue with {len(evaluation.diagnostic_gaps)} actionable gaps.",
+        metadata={"decision": "ROUTE_TO_HITL_QUEUE", "sealed_hash": sealed_hash, "gaps_count": len(evaluation.diagnostic_gaps)}
     )
     
     logs = state.get("logs", [])
@@ -405,25 +581,12 @@ def auto_accept_agent_node(state: DisputeState) -> DisputeState:
         f"Auto-acceptance defensed merchant from non-refundable ₹{fee_val:,.2f} issuer dispute fee and protected VAMP/ECM ratios."
     )
 
-    dossier = Dossier(
-        dispute_id=dispute_id,
-        payment_id=payload.payment_id,
-        amount_inr=payload.amount_inr or 1000.0,
-        card_network=payload.card_network,
-        reason_code=payload.reason_code,
-        confidence_score=evaluation.confidence_score,
+    dossier = _create_dossier(
+        state=state,
         decision="AUTO_ACCEPT_OR_REFUND",
-        evaluation=evaluation,
-        sealed_hash=sealed_hash,
-        timestamp=timestamp,
-        telemetry=payload.telemetry,
-        carrier_proof=payload.carrier_proof,
-        digital_proof=payload.digital_proof,
-        historical_count=len(payload.historical_transactions),
         summary=summary,
-        expected_value_inr=ev_val,
-        p_win=ev_result.p_win if ev_result else None,
-        rebuttal_letter=state.get("rebuttal_letter")
+        sealed_hash=sealed_hash,
+        timestamp=timestamp
     )
 
     ledger.append_block(
@@ -435,6 +598,14 @@ def auto_accept_agent_node(state: DisputeState) -> DisputeState:
             "expected_value_inr": ev_val,
             "fee_saved_inr": fee_val
         }
+    )
+
+    db.add_timeline_event(
+        dispute_id=dispute_id,
+        event_type="DECISION_SEALED",
+        title="Decision Sealed: Auto-Accepted / Refunded",
+        description="Auto-accepted dispute to protect merchant from non-refundable issuer arbitration fee.",
+        metadata={"decision": "AUTO_ACCEPT_OR_REFUND", "sealed_hash": sealed_hash, "fee_saved_inr": fee_val}
     )
 
     logs = state.get("logs", [])

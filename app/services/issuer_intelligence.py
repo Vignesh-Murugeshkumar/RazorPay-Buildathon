@@ -100,7 +100,11 @@ class IssuerIntelligenceEngine:
             total = len(outcomes)
             won = sum(1 for o in outcomes if o.get("outcome") == "won")
             lost = total - won
-            rate = round(won / total, 3) if total > 0 else default_info["win_rate"]
+            # Bayesian smoothing with empirical prior (pseudo-counts)
+            prior_rate = default_info.get("win_rate", 0.75)
+            prior_weight = 4.0
+            smoothed_rate = (won + (prior_rate * prior_weight)) / (total + prior_weight)
+            rate = round(smoothed_rate, 3)
         else:
             total = 20
             won = int(total * default_info["win_rate"])

@@ -160,7 +160,10 @@ async def list_disputes():
             timestamp=d.timestamp,
             sealed_hash=d.sealed_hash,
             expected_value_inr=d.expected_value_inr,
-            p_win=d.p_win
+            p_win=d.p_win,
+            win_probability=d.win_probability if d.win_probability is not None else d.p_win,
+            expected_value=d.expected_value if d.expected_value is not None else d.expected_value_inr,
+            assigned_to=d.assigned_to
         )
         for d in all_dossiers.values()
     ]

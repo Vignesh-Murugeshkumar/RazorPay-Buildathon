@@ -32,6 +32,7 @@ dossiers_db = _dossiers_cache
 
 @router.post("/webhooks/razorpay", status_code=status.HTTP_200_OK)
 @router.post("/webhook/dispute", status_code=status.HTTP_200_OK)
+@router.post("/webhook", status_code=status.HTTP_200_OK)
 async def handle_razorpay_dispute_webhook(
     request: Request,
     x_razorpay_signature: Optional[str] = Header(None, alias="X-Razorpay-Signature"),
@@ -58,43 +59,7 @@ async def handle_razorpay_dispute_webhook(
             detail=f"Webhook payload exceeds maximum size limit of {settings.MAX_REQUEST_BODY_BYTES // 1024} KB"
         )
 
-    # 1. Timestamp Freshness / Replay Guard
-    if x_razorpay_event_time is not None:
-        if not validate_webhook_timestamp(x_razorpay_event_time, tolerance_seconds=300):
-            logger.warning(
-                "Rejected stale webhook timestamp (potential replay)",
-                correlation_id=correlation_id,
-                event_time=x_razorpay_event_time
-            )
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Webhook timestamp outside 5-minute tolerance window"
-            )
-    elif settings.is_production:
-        logger.warning("Rejected production webhook: Missing X-Razorpay-Event-Time", correlation_id=correlation_id)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Missing required X-Razorpay-Event-Time header in production"
-        )
-
-    # 2. Event ID Nonce / Replay Guard
-    if x_razorpay_event_id is not None:
-        is_fresh = db.record_and_verify_event(
-            event_id=x_razorpay_event_id,
-            signature=x_razorpay_signature or "no_signature"
-        )
-        if not is_fresh:
-            logger.warning(
-                "Duplicate webhook event detected and rejected",
-                correlation_id=correlation_id,
-                event_id=x_razorpay_event_id
-            )
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Duplicate webhook event ID {x_razorpay_event_id} already processed"
-            )
-
-    # 3. Verify Razorpay Signature
+    # 1. Verify Razorpay Signature (Authentication first)
     if x_razorpay_signature is not None:
         is_valid = verify_razorpay_webhook(
             raw_body=raw_body,
@@ -119,6 +84,42 @@ async def handle_razorpay_dispute_webhook(
                 detail="Missing required X-Razorpay-Signature header in production environment"
             )
         logger.info("Webhook received without signature header (dev/testing mode)", correlation_id=correlation_id)
+
+    # 2. Timestamp Freshness / Replay Guard
+    if x_razorpay_event_time is not None:
+        if not validate_webhook_timestamp(x_razorpay_event_time, tolerance_seconds=300):
+            logger.warning(
+                "Rejected stale webhook timestamp (potential replay)",
+                correlation_id=correlation_id,
+                event_time=x_razorpay_event_time
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Webhook timestamp outside 5-minute tolerance window"
+            )
+    elif settings.is_production:
+        logger.warning("Rejected production webhook: Missing X-Razorpay-Event-Time", correlation_id=correlation_id)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing required X-Razorpay-Event-Time header in production"
+        )
+
+    # 3. Event ID Nonce / Replay Guard
+    if x_razorpay_event_id is not None:
+        is_fresh = db.record_and_verify_event(
+            event_id=x_razorpay_event_id,
+            signature=x_razorpay_signature or "no_signature"
+        )
+        if not is_fresh:
+            logger.warning(
+                "Duplicate webhook event detected and rejected",
+                correlation_id=correlation_id,
+                event_id=x_razorpay_event_id
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Duplicate webhook event ID {x_razorpay_event_id} already processed"
+            )
 
     # 4. Validate Schema
     try:

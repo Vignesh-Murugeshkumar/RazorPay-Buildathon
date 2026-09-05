@@ -147,59 +147,126 @@
             </div>
         </section>
 
-        <!-- Live Disputes Table -->
-        <section class="table-panel">
-            <div class="table-toolbar">
-                <div class="search-filter-group">
-                    <input type="text" id="search-input" class="search-input" placeholder="Search by Dispute ID, Payment ID, Reason Code...">
-                    <select id="network-filter" class="filter-select">
-                        <option value="all">All Networks</option>
-                        <option value="visa">Visa (CE 3.0)</option>
-                        <option value="mastercard">Mastercard (FPT)</option>
-                    </select>
-                    <select id="decision-filter" class="filter-select">
-                        <option value="all">All Decisions</option>
-                        <option value="AUTO_DISPATCHED">Auto-Dispatched</option>
-                        <option value="ROUTE_TO_HITL_QUEUE">HITL Review Queue</option>
-                    </select>
-                </div>
-                <button class="btn btn-secondary" onclick="fetchDisputes()">
-                    🔄 Refresh Stream
-                </button>
-            </div>
+        <!-- Navigation Tab Bar -->
+        <nav class="nav-tab-bar">
+            <button class="nav-tab active" id="tab-btn-disputes" onclick="switchMainTab('disputes')">
+                🛡️ All Disputes (<span id="badge-all-disputes">0</span>)
+            </button>
+            <button class="nav-tab" id="tab-btn-hitl" onclick="switchMainTab('hitl')">
+                🛠️ HITL Review Queue <span class="counter-badge" id="hitl-counter-badge">0</span>
+            </button>
+            <button class="nav-tab" id="tab-btn-rules" onclick="switchMainTab('rules')">
+                📜 Regulatory Rules (Visa CE 3.0 / MC FPT / RuPay)
+            </button>
+            <button class="nav-tab" id="tab-btn-ledger" onclick="switchMainTab('ledger')">
+                ⛓️ Cryptographic Ledger
+            </button>
+        </nav>
 
-            <table class="disputes-table">
-                <thead>
-                    <tr>
-                        <th>Dispute / Payment ID</th>
-                        <th>Network &amp; Reason</th>
-                        <th>Disputed Amount</th>
-                        <th>Confidence ($S_c$)</th>
-                        <th>Gatekeeper Decision</th>
-                        <th>SHA-256 Seal</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="disputes-tbody">
-                    <!-- Dynamic Rows -->
-                </tbody>
-            </table>
-        </section>
-
-        <!-- Cryptographic Audit Ledger Explorer -->
-        <section class="card-panel">
-            <div class="panel-header">
-                <div class="panel-title">
-                    <span>⛓️ Cryptographic SHA-256 Audit Chain Ledger</span>
+        <!-- View 1: Live Disputes Table -->
+        <div id="view-disputes">
+            <section class="table-panel">
+                <div class="table-toolbar">
+                    <div class="search-filter-group">
+                        <input type="text" id="search-input" class="search-input" placeholder="Search by Dispute ID, Payment ID, Reason Code...">
+                        <select id="network-filter" class="filter-select">
+                            <option value="all">All Networks</option>
+                            <option value="visa">Visa (CE 3.0)</option>
+                            <option value="mastercard">Mastercard (FPT)</option>
+                            <option value="rupay">RuPay</option>
+                        </select>
+                        <select id="decision-filter" class="filter-select">
+                            <option value="all">All Decisions</option>
+                            <option value="AUTO_DISPATCHED">Auto-Dispatched</option>
+                            <option value="ROUTE_TO_HITL_QUEUE">HITL Review Queue</option>
+                            <option value="AUTO_ACCEPT_OR_REFUND">Auto-Accepted / Refunded</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-secondary" onclick="fetchDisputes()">
+                        🔄 Refresh Stream
+                    </button>
                 </div>
-                <button class="btn btn-secondary" onclick="verifyLedgerOnDemand()">
-                    🔍 Verify Full Chain Integrity
-                </button>
-            </div>
-            <div class="ledger-timeline" id="ledger-blocks-container">
-                <!-- Dynamic Blocks -->
-            </div>
-        </section>
+
+                <table class="disputes-table">
+                    <thead>
+                        <tr>
+                            <th>Dispute / Payment ID</th>
+                            <th>Network &amp; Reason</th>
+                            <th>Amount (INR)</th>
+                            <th>Confidence ($S_c$)</th>
+                            <th>Win Prob / E[V]</th>
+                            <th>Gatekeeper Decision</th>
+                            <th>Assigned To</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="disputes-tbody">
+                        <!-- Dynamic Rows -->
+                    </tbody>
+                </table>
+            </section>
+        </div>
+
+        <!-- View 2: HITL Review Queue -->
+        <div id="view-hitl" style="display: none;">
+            <section class="table-panel">
+                <div class="table-toolbar">
+                    <div style="font-weight: 600; font-size: 14px; color: var(--accent-amber); display: flex; align-items: center; gap: 8px;">
+                        <span>⚠️ Disputes Requiring Manual Analyst Review &amp; Evidence Remediation</span>
+                    </div>
+                    <button class="btn btn-secondary" onclick="fetchHitlQueue()">
+                        🔄 Refresh Queue
+                    </button>
+                </div>
+                <table class="disputes-table">
+                    <thead>
+                        <tr>
+                            <th>Dispute ID</th>
+                            <th>Amount</th>
+                            <th>Network / Reason</th>
+                            <th>Win Prob &amp; E[V]</th>
+                            <th>Actionable Evidence Gaps</th>
+                            <th>Assigned Analyst</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hitl-tbody">
+                        <!-- Dynamic HITL Rows -->
+                    </tbody>
+                </table>
+            </section>
+        </div>
+
+        <!-- View 3: Regulatory Rules Explorer -->
+        <div id="view-rules" style="display: none;">
+            <section class="card-panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <span>📜 Card Network Regulatory Frameworks &amp; Qualification Criteria</span>
+                    </div>
+                </div>
+                <div id="rules-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; padding: 10px 0;">
+                    <!-- Dynamically Populated Rules -->
+                </div>
+            </section>
+        </div>
+
+        <!-- View 4 / Section: Cryptographic Audit Ledger Explorer -->
+        <div id="view-ledger">
+            <section class="card-panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <span>⛓️ Cryptographic SHA-256 Audit Chain Ledger</span>
+                    </div>
+                    <button class="btn btn-secondary" onclick="verifyLedgerOnDemand()">
+                        🔍 Verify Full Chain Integrity
+                    </button>
+                </div>
+                <div class="ledger-timeline" id="ledger-blocks-container">
+                    <!-- Dynamic Blocks -->
+                </div>
+            </section>
+        </div>
     </div>
 
     <!-- Evidence Dossier Modal -->

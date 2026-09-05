@@ -39,3 +39,5 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+powershell.bat
+powershell.cmd

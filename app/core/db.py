@@ -72,13 +72,24 @@ class DatabaseManager:
     - Local / Testing: Embedded SQLite fallback for zero-configuration development and fast unit testing.
     """
     _instance = None
-    _lock = threading.Lock()
+    _lock = threading.RLock()
+
+    @property
+    def _is_postgres(self) -> bool:
+        is_test = os.getenv("ENVIRONMENT", "development").lower() in ("test", "testing") or os.getenv("TEST_MODE", "0") == "1"
+        if is_test:
+            return False
+        return getattr(self, "_is_pg_actual", False)
+
+    @_is_postgres.setter
+    def _is_postgres(self, val: bool):
+        self._is_pg_actual = val
 
     def __new__(cls, *args, **kwargs):
         with cls._lock:
             if cls._instance is None:
                 cls._instance = super(DatabaseManager, cls).__new__(cls)
-                cls._instance._is_postgres = False
+                cls._instance._is_pg_actual = False
                 cls._instance._pool = None
                 cls._instance._initialized = False
             return cls._instance
@@ -99,7 +110,9 @@ class DatabaseManager:
 
     def _init_db(self):
         with self._lock:
-            cleaned_url = sanitize_postgres_url(DATABASE_URL)
+            active_db_url = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DATABASE_URL") or os.getenv("POSTGRES_URL") or DATABASE_URL
+            is_test = os.getenv("ENVIRONMENT", "development").lower() in ("test", "testing") or os.getenv("TEST_MODE", "0") == "1"
+            cleaned_url = sanitize_postgres_url(active_db_url) if not is_test else None
             if cleaned_url:
                 try:
                     import psycopg
@@ -187,6 +200,17 @@ class DatabaseManager:
                                     evidence_types_used JSONB,
                                     resolved_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                                 );
+
+                                CREATE TABLE IF NOT EXISTS dispute_timeline_events (
+                                    id SERIAL PRIMARY KEY,
+                                    dispute_id VARCHAR NOT NULL,
+                                    event_type VARCHAR(64) NOT NULL,
+                                    title VARCHAR(255) NOT NULL,
+                                    description TEXT NOT NULL,
+                                    metadata JSONB,
+                                    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                                );
+                                CREATE INDEX IF NOT EXISTS idx_timeline_dispute ON dispute_timeline_events (dispute_id, timestamp ASC);
                             """)
                             
                     is_serverless = bool(os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
@@ -297,6 +321,18 @@ class DatabaseManager:
                         resolved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS dispute_timeline_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        dispute_id TEXT NOT NULL,
+                        event_type TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        description TEXT NOT NULL,
+                        metadata TEXT,
+                        timestamp TEXT DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_timeline_dispute ON dispute_timeline_events (dispute_id, timestamp ASC)")
                 conn.commit()
                 conn.close()
                 logger.info("SQLite database initialized successfully", db_path=SQLITE_DB_PATH)
@@ -669,13 +705,7 @@ class DatabaseManager:
             return blocks
 
     def clear_all_data(self):
-        """Used for clean test resets ONLY.
-
-        Safety rules:
-        - PostgreSQL / Supabase: TRUNCATE is only executed when ENVIRONMENT=test
-          or TEST_MODE=1 is set, preventing accidental wipe of production data.
-        - SQLite: Always safe to clear (local file, no prod risk).
-        """
+        self._ensure_initialized()
         with self._lock:
             if self._is_postgres:
                 if not _IS_TEST_ENV:
@@ -688,7 +718,7 @@ class DatabaseManager:
                     try:
                         with self._get_pg_conn() as conn:
                             with conn.cursor() as cur:
-                                cur.execute("TRUNCATE TABLE dossiers, ledger_blocks, processed_events;")
+                                cur.execute("TRUNCATE TABLE dossiers, ledger_blocks, processed_events, dispute_timeline_events;")
                         logger.info("Cleared all Supabase tables (test environment)")
                     except Exception as e:
                         logger.error("Error clearing Supabase tables", error=str(e))
@@ -700,6 +730,7 @@ class DatabaseManager:
                 cur.execute("DELETE FROM dossiers")
                 cur.execute("DELETE FROM ledger_blocks")
                 cur.execute("DELETE FROM processed_events")
+                cur.execute("DELETE FROM dispute_timeline_events")
                 conn.commit()
                 conn.close()
             except Exception as e:
@@ -958,6 +989,282 @@ class DatabaseManager:
             except Exception as e:
                 logger.error("Error fetching BIN outcomes from SQLite", error=str(e))
                 return []
+
+    # ------------------ TIMELINE EVENTS CRUD ------------------
+    def add_timeline_event(
+        self,
+        dispute_id: str,
+        event_type: str,
+        title: str,
+        description: str,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> int:
+        self._ensure_initialized()
+        with self._lock:
+            meta_json = json.dumps(metadata or {})
+            if self._is_postgres:
+                try:
+                    with self._get_pg_conn() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute("""
+                                INSERT INTO dispute_timeline_events (
+                                    dispute_id, event_type, title, description, metadata, timestamp
+                                ) VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                                RETURNING id;
+                            """, (dispute_id, event_type, title, description, meta_json))
+                            row = cur.fetchone()
+                            return row[0] if row else 1
+                except Exception as e:
+                    logger.error("Error adding timeline event to Supabase", dispute_id=dispute_id, error=str(e))
+
+            try:
+                conn = sqlite3.connect(SQLITE_DB_PATH, check_same_thread=False, timeout=15.0)
+                cur = conn.cursor()
+                cur.execute("""
+                    INSERT INTO dispute_timeline_events (
+                        dispute_id, event_type, title, description, metadata, timestamp
+                    ) VALUES (?, ?, ?, ?, ?, datetime('now'))
+                """, (dispute_id, event_type, title, description, meta_json))
+                event_id = cur.lastrowid or 1
+                conn.commit()
+                conn.close()
+                return event_id
+            except Exception as e:
+                logger.error("Error adding timeline event to SQLite", dispute_id=dispute_id, error=str(e))
+                return 1
+
+    def get_timeline_events(self, dispute_id: str) -> List[Dict[str, Any]]:
+        self._ensure_initialized()
+        with self._lock:
+            events = []
+            if self._is_postgres:
+                try:
+                    from psycopg.rows import dict_row
+                    with self._get_pg_conn(row_factory=dict_row) as conn:
+                        with conn.cursor() as cur:
+                            cur.execute("""
+                                SELECT id, dispute_id, event_type, title, description, metadata, timestamp
+                                FROM dispute_timeline_events
+                                WHERE dispute_id = %s
+                                ORDER BY id ASC
+                            """, (dispute_id,))
+                            rows = cur.fetchall()
+                            for r in rows:
+                                meta = r.get("metadata")
+                                if isinstance(meta, str):
+                                    try:
+                                        meta = json.loads(meta)
+                                    except Exception:
+                                        pass
+                                ts = r.get("timestamp")
+                                events.append({
+                                    "id": r["id"],
+                                    "dispute_id": r["dispute_id"],
+                                    "event_type": r["event_type"],
+                                    "title": r["title"],
+                                    "description": r["description"],
+                                    "metadata": meta or {},
+                                    "timestamp": str(ts) if ts else ""
+                                })
+                            return events
+                except Exception as e:
+                    logger.error("Error fetching timeline events from Supabase", dispute_id=dispute_id, error=str(e))
+
+            try:
+                conn = sqlite3.connect(SQLITE_DB_PATH, check_same_thread=False, timeout=15.0)
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT id, dispute_id, event_type, title, description, metadata, timestamp
+                    FROM dispute_timeline_events
+                    WHERE dispute_id = ?
+                    ORDER BY id ASC
+                """, (dispute_id,))
+                rows = cur.fetchall()
+                for r in rows:
+                    meta = r["metadata"]
+                    if isinstance(meta, str):
+                        try:
+                            meta = json.loads(meta)
+                        except Exception:
+                            meta = {}
+                    events.append({
+                        "id": r["id"],
+                        "dispute_id": r["dispute_id"],
+                        "event_type": r["event_type"],
+                        "title": r["title"],
+                        "description": r["description"],
+                        "metadata": meta or {},
+                        "timestamp": str(r["timestamp"])
+                    })
+                conn.close()
+                return events
+            except Exception as e:
+                logger.error("Error fetching timeline events from SQLite", dispute_id=dispute_id, error=str(e))
+                return []
+
+    # ------------------ HITL REVIEW & ASSIGNMENT ------------------
+    def assign_dispute(self, dispute_id: str, assigned_to: str) -> bool:
+        self._ensure_initialized()
+        with self._lock:
+            dossier = self.get_dossier(dispute_id)
+            if not dossier:
+                return False
+            dossier.assigned_to = assigned_to
+            self.save_dossier(dossier)
+            self.add_timeline_event(
+                dispute_id=dispute_id,
+                event_type="ASSIGNED",
+                title="Dispute Assigned to Reviewer",
+                description=f"Dispute assigned to {assigned_to} for human review and evidence preparation.",
+                metadata={"assigned_to": assigned_to}
+            )
+            return True
+
+    def get_hitl_queue(self) -> List[Dict[str, Any]]:
+        self._ensure_initialized()
+        dossiers = self.get_all_dossiers()
+        queue = []
+        for d in dossiers.values():
+            is_hitl = (
+                d.decision in ("ROUTE_TO_HITL_QUEUE", "MANUAL_REVIEW", "NEEDS_EVIDENCE") or
+                d.assigned_to is not None or
+                (d.confidence_score < 75.0 and d.decision != "AUTO_ACCEPT_OR_REFUND")
+            )
+            if is_hitl:
+                queue.append({
+                    "dispute_id": d.dispute_id,
+                    "payment_id": d.payment_id,
+                    "amount_inr": d.amount_inr,
+                    "card_network": d.card_network,
+                    "reason_code": d.reason_code,
+                    "confidence_score": d.confidence_score,
+                    "decision": d.decision,
+                    "win_probability": d.win_probability if d.win_probability is not None else d.p_win,
+                    "expected_value_inr": d.expected_value_inr,
+                    "assigned_to": d.assigned_to,
+                    "timestamp": d.timestamp,
+                    "diagnostic_gaps": d.evaluation.diagnostic_gaps if d.evaluation else [],
+                    "summary": d.summary
+                })
+        queue.sort(key=lambda x: x["timestamp"], reverse=True)
+        return queue
+
+    # ------------------ DASHBOARD AGGREGATION ------------------
+    def get_dashboard_summary(self) -> Dict[str, Any]:
+        self._ensure_initialized()
+        dossiers = list(self.get_all_dossiers().values())
+        outcomes = self.get_bin_outcomes()
+        
+        total_disputes = len(dossiers)
+        total_amount_inr = sum(d.amount_inr for d in dossiers)
+        
+        # Outcome tracking
+        won_count = 0
+        resolved_count = 0
+        for out in outcomes:
+            resolved_count += 1
+            if out.get("outcome") == "won":
+                won_count += 1
+        
+        if resolved_count > 0:
+            win_rate = round((won_count / resolved_count) * 100, 1)
+        elif total_disputes > 0:
+            avg_p_win = sum((d.win_probability or d.p_win or 0.0) for d in dossiers) / total_disputes
+            win_rate = round(avg_p_win * 100, 1)
+        else:
+            win_rate = 0.0
+
+        recovered_amount = 0.0
+        for d in dossiers:
+            pw = d.win_probability if d.win_probability is not None else (d.p_win or 0.0)
+            if d.decision in ("AUTO_DISPATCH", "AUTO_DISPATCHED") or pw >= 0.70:
+                recovered_amount += d.amount_inr * pw
+        recovered_amount_inr = round(recovered_amount, 2)
+
+        auto_decisions = sum(1 for d in dossiers if d.decision in ("AUTO_DISPATCH", "AUTO_DISPATCHED", "AUTO_ACCEPT_OR_REFUND"))
+        auto_decision_rate = round((auto_decisions / total_disputes * 100), 1) if total_disputes > 0 else 0.0
+        avg_confidence = round(sum(d.confidence_score for d in dossiers) / total_disputes, 1) if total_disputes > 0 else 0.0
+
+        status_counts: Dict[str, int] = {}
+        decision_counts: Dict[str, int] = {}
+        network_map: Dict[str, Dict[str, Any]] = {}
+        reason_map: Dict[str, Dict[str, Any]] = {}
+        hitl_count = 0
+
+        for d in dossiers:
+            decision_counts[d.decision] = decision_counts.get(d.decision, 0) + 1
+            if d.decision in ("ROUTE_TO_HITL_QUEUE", "MANUAL_REVIEW") or d.assigned_to is not None:
+                hitl_count += 1
+            
+            # Network aggregation
+            net = d.card_network.lower() if d.card_network else "unknown"
+            if net not in network_map:
+                network_map[net] = {"count": 0, "amount": 0.0, "p_win_sum": 0.0}
+            network_map[net]["count"] += 1
+            network_map[net]["amount"] += d.amount_inr
+            network_map[net]["p_win_sum"] += (d.win_probability or d.p_win or 0.0)
+
+            # Reason code aggregation
+            rc = d.reason_code or "unknown"
+            if rc not in reason_map:
+                reason_map[rc] = {"count": 0, "amount": 0.0}
+            reason_map[rc]["count"] += 1
+            reason_map[rc]["amount"] += d.amount_inr
+
+        network_breakdown = [
+            {
+                "network": k,
+                "count": v["count"],
+                "total_amount_inr": round(v["amount"], 2),
+                "win_rate": round((v["p_win_sum"] / v["count"]) * 100, 1) if v["count"] > 0 else 0.0
+            }
+            for k, v in network_map.items()
+        ]
+
+        reason_breakdown = [
+            {
+                "reason_code": k,
+                "count": v["count"],
+                "total_amount_inr": round(v["amount"], 2)
+            }
+            for k, v in reason_map.items()
+        ]
+
+        # Recent 10 disputes
+        sorted_dossiers = sorted(dossiers, key=lambda x: x.timestamp, reverse=True)[:10]
+        recent_disputes = [
+            {
+                "dispute_id": d.dispute_id,
+                "payment_id": d.payment_id,
+                "amount_inr": d.amount_inr,
+                "card_network": d.card_network,
+                "reason_code": d.reason_code,
+                "confidence_score": d.confidence_score,
+                "decision": d.decision,
+                "win_probability": d.win_probability if d.win_probability is not None else d.p_win,
+                "expected_value_inr": d.expected_value_inr,
+                "assigned_to": d.assigned_to,
+                "timestamp": d.timestamp,
+                "sealed_hash": d.sealed_hash
+            }
+            for d in sorted_dossiers
+        ]
+
+        return {
+            "total_disputes": total_disputes,
+            "total_amount_inr": round(total_amount_inr, 2),
+            "recovered_amount_inr": recovered_amount_inr,
+            "win_rate": win_rate,
+            "auto_decision_rate": auto_decision_rate,
+            "avg_confidence_score": avg_confidence,
+            "status_counts": status_counts,
+            "decision_counts": decision_counts,
+            "network_breakdown": network_breakdown,
+            "reason_breakdown": reason_breakdown,
+            "hitl_pending_count": hitl_count,
+            "recent_disputes": recent_disputes
+        }
 
 
 # Module-level singleton — DatabaseManager.__new__ is now crash-safe so this

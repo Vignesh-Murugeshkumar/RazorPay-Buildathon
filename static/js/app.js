@@ -91,35 +91,67 @@ function initCharts() {
 }
 
 // API Calls
+// Tab Switching
+function switchMainTab(tabName) {
+    const tabs = ['disputes', 'hitl', 'rules', 'ledger'];
+    tabs.forEach(t => {
+        const btn = document.getElementById(`tab-btn-${t}`);
+        const view = document.getElementById(`view-${t}`);
+        if (btn) btn.classList.remove('active');
+        if (view) view.style.display = 'none';
+    });
+
+    const activeBtn = document.getElementById(`tab-btn-${tabName}`);
+    const activeView = document.getElementById(`view-${tabName}`);
+    if (activeBtn) activeBtn.classList.add('active');
+    if (activeView) activeView.style.display = 'block';
+
+    if (tabName === 'hitl') fetchHitlQueue();
+    if (tabName === 'rules') fetchRules();
+    if (tabName === 'disputes') fetchDisputes();
+}
+
+// API Calls
 async function fetchStats() {
     try {
-        const res = await fetch('/api/v1/stats');
-        if (!res.ok) return;
-        const stats = await res.json();
-
-        document.getElementById('kpi-total-disputes').innerText = stats.total_disputes.toLocaleString();
-        document.getElementById('kpi-yield-rate').innerText = `${stats.autonomous_yield_percentage.toFixed(1)}%`;
-        document.getElementById('kpi-recovered-gmv').innerText = `₹${stats.recovered_gmv_inr.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
-        document.getElementById('kpi-total-blocks').innerText = stats.total_ledger_blocks.toLocaleString();
+        const [statsRes, dashRes] = await Promise.all([
+            fetch('/api/v1/stats'),
+            fetch('/api/v1/dashboard/summary')
+        ]);
         
-        const integrityBadge = document.getElementById('ledger-integrity-status');
-        if (integrityBadge) {
-            if (stats.ledger_integrity_verified) {
-                integrityBadge.innerHTML = `<span class="pulse-dot"></span> SHA-256 Ledger: Verified`;
-                integrityBadge.className = 'status-pill active';
-            } else {
-                integrityBadge.innerHTML = `⚠️ Ledger Tamper Detected`;
-                integrityBadge.className = 'status-pill';
-                integrityBadge.style.color = '#f43f5e';
+        if (statsRes.ok) {
+            const stats = await statsRes.json();
+            document.getElementById('kpi-total-disputes').innerText = stats.total_disputes.toLocaleString();
+            document.getElementById('kpi-yield-rate').innerText = `${stats.autonomous_yield_percentage.toFixed(1)}%`;
+            document.getElementById('kpi-recovered-gmv').innerText = `₹${stats.recovered_gmv_inr.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+            document.getElementById('kpi-total-blocks').innerText = stats.total_ledger_blocks.toLocaleString();
+            
+            const badgeDisputes = document.getElementById('badge-all-disputes');
+            if (badgeDisputes) badgeDisputes.innerText = stats.total_disputes;
+
+            const integrityBadge = document.getElementById('ledger-integrity-status');
+            if (integrityBadge) {
+                if (stats.ledger_integrity_verified) {
+                    integrityBadge.innerHTML = `<span class="pulse-dot"></span> SHA-256 Ledger: Verified`;
+                    integrityBadge.className = 'status-pill active';
+                } else {
+                    integrityBadge.innerHTML = `⚠️ Ledger Tamper Detected`;
+                    integrityBadge.className = 'status-pill';
+                    integrityBadge.style.color = '#f43f5e';
+                }
+            }
+
+            if (outcomeChartInstance) {
+                outcomeChartInstance.data.datasets[0].data = [stats.auto_dispatched_count, stats.hitl_count];
+                outcomeChartInstance.update();
             }
         }
 
-        // Update Charts
-        if (outcomeChartInstance) {
-            outcomeChartInstance.data.datasets[0].data = [stats.auto_dispatched_count, stats.hitl_count];
-            outcomeChartInstance.update();
+        if (dashRes.ok) {
+            const dash = await dashRes.json();
+            const hitlBadge = document.getElementById('hitl-counter-badge');
+            if (hitlBadge) hitlBadge.innerText = dash.hitl_pending_count || 0;
         }
-
     } catch (err) {
         console.error('Error fetching stats:', err);
     }
@@ -132,6 +164,8 @@ async function fetchDisputes() {
         disputesList = await res.json();
         renderDisputesTable(disputesList);
         updateScoreDistributionChart(disputesList);
+        const badge = document.getElementById('badge-all-disputes');
+        if (badge) badge.innerText = disputesList.length;
     } catch (err) {
         console.error('Error fetching disputes:', err);
     }
@@ -148,6 +182,135 @@ async function fetchLedger() {
     }
 }
 
+async function fetchHitlQueue() {
+    try {
+        const res = await fetch('/api/v1/review-queue');
+        if (!res.ok) return;
+        const data = await res.json();
+        const queue = data.disputes || [];
+        const tbody = document.getElementById('hitl-tbody');
+        const badge = document.getElementById('hitl-counter-badge');
+        if (badge) badge.innerText = queue.length;
+        if (!tbody) return;
+
+        if (queue.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" style="text-align: center; padding: 40px; color: var(--accent-emerald);">
+                        🎉 No disputes currently pending manual review. All representments are automated or resolved!
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = queue.map(q => {
+            const pWin = (q.win_probability !== null && q.win_probability !== undefined) ? (q.win_probability * 100).toFixed(1) + '%' : 'N/A';
+            const ev = q.expected_value_inr !== undefined ? q.expected_value_inr : 0;
+            const assignedBadge = q.assigned_to 
+                ? `<span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc;">👤 ${q.assigned_to}</span>` 
+                : `<button class="btn btn-secondary" style="padding: 2px 8px; font-size: 11px;" onclick="assignPrompt('${q.dispute_id}')">+ Assign</button>`;
+
+            const gapsList = (q.diagnostic_gaps && q.diagnostic_gaps.length > 0)
+                ? q.diagnostic_gaps.map(g => `<span class="factor-pill-neg" style="font-size: 10px; margin: 1px;">⚠️ ${g}</span>`).join(' ')
+                : `<span style="color: var(--text-muted); font-size: 11px;">Awaiting analyst assessment</span>`;
+
+            return `
+                <tr>
+                    <td>
+                        <span class="mono-text" style="font-weight: 600; color: var(--accent-cyan);">${q.dispute_id}</span>
+                        <br><span class="mono-text" style="font-size: 10px; color: var(--text-subtle);">${q.payment_id}</span>
+                    </td>
+                    <td style="font-weight: 600;">₹${q.amount_inr.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                    <td><span class="badge badge-visa">${q.card_network.toUpperCase()} (${q.reason_code})</span></td>
+                    <td>
+                        <div style="font-size: 12px; font-weight: 600; color: var(--accent-cyan);">P(win): ${pWin}</div>
+                        <div style="font-size: 11px; color: ${ev >= 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'}; font-family: var(--font-mono);">
+                            E[V]: ${ev >= 0 ? '+' : ''}₹${ev.toLocaleString()}
+                        </div>
+                    </td>
+                    <td style="max-width: 280px;">${gapsList}</td>
+                    <td>${assignedBadge}</td>
+                    <td>
+                        <div style="display: flex; gap: 6px;">
+                            <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="viewDossier('${q.dispute_id}')">Inspect</button>
+                            <button class="btn btn-primary" style="padding: 4px 8px; font-size: 11px; background: linear-gradient(135deg, #f59e0b, #d97706);" onclick="openRemediationModal('${q.dispute_id}')">🛠️ Remediate</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    } catch (err) {
+        console.error('Error fetching HITL queue:', err);
+    }
+}
+
+async function fetchRules() {
+    try {
+        const res = await fetch('/api/v1/rules/all');
+        if (!res.ok) return;
+        const data = await res.json();
+        const container = document.getElementById('rules-container');
+        if (!container) return;
+
+        const rulesObj = data.rules || {};
+        container.innerHTML = Object.entries(rulesObj).map(([netKey, netData]) => {
+            const regs = netData.regulations || [];
+            return `
+                <div class="card-panel" style="background: var(--surface-2); border-radius: var(--radius-lg); padding: 18px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
+                        <h3 style="font-size: 15px; font-weight: 700; color: var(--accent-cyan);">${netData.network}</h3>
+                        <span class="badge badge-visa">${regs.length} Active Rules</span>
+                    </div>
+                    ${regs.map(r => `
+                        <div style="margin-bottom: 14px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                <strong style="color: var(--text-main); font-size: 12px;">${r.name}</strong>
+                                <span class="mono-text" style="font-size: 10px; color: var(--accent-amber);">Reason ${r.reason_codes.join(', ')}</span>
+                            </div>
+                            <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 6px;">${r.description}</p>
+                            ${r.lookback_window_days ? `
+                                <div style="font-size: 10px; color: var(--accent-emerald); font-family: var(--font-mono);">
+                                    Lookback Window: ${r.lookback_window_days.min} - ${r.lookback_window_days.max} days | Min Orders: ${r.qualifying_threshold}
+                                </div>
+                            ` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }).join('');
+    } catch (err) {
+        console.error('Error fetching rules:', err);
+    }
+}
+
+function downloadPdf(disputeId) {
+    window.open(`/api/v1/disputes/${disputeId}/representment-pdf`, '_blank');
+}
+
+async function assignPrompt(disputeId) {
+    const analyst = prompt("Enter Reviewer or Analyst name for dispute " + disputeId + ":", "Senior Analyst");
+    if (!analyst || !analyst.trim()) return;
+
+    try {
+        const res = await fetch(`/api/v1/disputes/${disputeId}/assign`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ assigned_to: analyst.trim() })
+        });
+        if (res.ok) {
+            alert(`Dispute ${disputeId} successfully assigned to ${analyst.trim()}`);
+            fetchDisputes();
+            fetchHitlQueue();
+            fetchStats();
+        } else {
+            alert('Failed to assign dispute. Please check server logs.');
+        }
+    } catch (err) {
+        console.error('Error assigning dispute:', err);
+    }
+}
+
 // Table Rendering
 function renderDisputesTable(disputes) {
     const tbody = document.getElementById('disputes-tbody');
@@ -156,7 +319,7 @@ function renderDisputesTable(disputes) {
     if (disputes.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="7" style="text-align: center; padding: 40px; color: var(--text-muted);">
+                <td colspan="8" style="text-align: center; padding: 40px; color: var(--text-muted);">
                     No disputes processed yet. Click a simulation preset above to test real-time state execution!
                 </td>
             </tr>
@@ -171,6 +334,18 @@ function renderDisputesTable(disputes) {
         let scoreClass = 'low';
         if (d.confidence_score >= 85) scoreClass = 'high';
         else if (d.confidence_score >= 60) scoreClass = 'mid';
+
+        const pWinStr = (d.win_probability !== null && d.win_probability !== undefined) 
+            ? (d.win_probability * 100).toFixed(1) + '%' 
+            : ((d.p_win || 0) * 100).toFixed(1) + '%';
+
+        const evVal = (d.expected_value !== null && d.expected_value !== undefined)
+            ? d.expected_value
+            : (d.expected_value_inr || 0);
+
+        const assignedHtml = d.assigned_to 
+            ? `<span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; font-size: 11px;">👤 ${d.assigned_to}</span>` 
+            : `<button class="btn btn-secondary" style="padding: 2px 6px; font-size: 10px;" onclick="assignPrompt('${d.dispute_id}')">+ Assign</button>`;
 
         return `
             <tr>
@@ -195,23 +370,30 @@ function renderDisputesTable(disputes) {
                     </div>
                 </td>
                 <td>
-                    <span class="badge ${isAuto ? 'badge-auto' : 'badge-hitl'}">
-                        ${isAuto ? '🛡️ Auto-Dispatched' : '👤 HITL Review'}
+                    <div style="font-size: 12px; font-weight: 600; color: var(--accent-cyan);">${pWinStr}</div>
+                    <div style="font-size: 10px; color: ${evVal >= 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'}; font-family: var(--font-mono);">
+                        E[V]: ${evVal >= 0 ? '+' : ''}₹${evVal.toLocaleString()}
+                    </div>
+                </td>
+                <td>
+                    <span class="badge ${isAuto ? 'badge-auto' : (d.decision === 'AUTO_ACCEPT_OR_REFUND' ? 'badge-hitl' : 'badge-hitl')}">
+                        ${isAuto ? '🛡️ Auto-Dispatched' : (d.decision === 'AUTO_ACCEPT_OR_REFUND' ? '🛑 Auto-Refund' : '👤 HITL Review')}
                     </span>
                 </td>
                 <td>
-                    <span class="mono-text" style="font-size: 11px; color: var(--text-muted); cursor: pointer;" title="${d.sealed_hash}">
-                        ${d.sealed_hash.substring(0, 10)}...
-                    </span>
+                    ${assignedHtml}
                 </td>
                 <td>
-                    <div style="display: flex; gap: 6px;">
+                    <div style="display: flex; gap: 4px;">
                         <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="viewDossier('${d.dispute_id}')">
                             Inspect
                         </button>
+                        <button class="btn btn-pdf" style="padding: 4px 8px; font-size: 11px;" onclick="downloadPdf('${d.dispute_id}')" title="Download Representment PDF">
+                            📄 PDF
+                        </button>
                         ${!isAuto ? `
                             <button class="btn btn-primary" style="padding: 4px 8px; font-size: 11px; background: linear-gradient(135deg, #f59e0b, #d97706); border-color: #f59e0b;" onclick="openRemediationModal('${d.dispute_id}')">
-                                🛠️ Remediate
+                                🛠️
                             </button>
                         ` : ''}
                     </div>
@@ -283,21 +465,33 @@ function renderLedgerBlocks(blocks) {
 // Modal Dossier Inspector
 async function viewDossier(disputeId) {
     try {
-        const res = await fetch(`/api/v1/disputes/${disputeId}`);
-        if (!res.ok) return;
-        const dossier = await res.json();
+        const [dossierRes, timelineRes] = await Promise.all([
+            fetch(`/api/v1/disputes/${disputeId}`),
+            fetch(`/api/v1/disputes/${disputeId}/timeline`)
+        ]);
+
+        if (!dossierRes.ok) return;
+        const dossier = await dossierRes.json();
+        const timelineEvents = timelineRes.ok ? await timelineRes.json() : [];
 
         const modal = document.getElementById('dossier-modal');
         const modalBody = document.getElementById('modal-dossier-body');
 
         const isAuto = dossier.decision === 'AUTO_DISPATCHED';
-        const evalRes = dossier.evaluation;
+        const evalRes = dossier.evaluation || {};
+        const pWin = dossier.win_probability !== null && dossier.win_probability !== undefined ? (dossier.win_probability * 100).toFixed(1) + '%' : ((dossier.p_win || 0) * 100).toFixed(1) + '%';
+        const evVal = dossier.expected_value !== null && dossier.expected_value !== undefined ? dossier.expected_value : (dossier.expected_value_inr || 0);
+
+        const explanation = dossier.decision_explanation || {};
+        const positiveFactors = explanation.top_positive_factors || [];
+        const negativeFactors = explanation.top_negative_factors || [];
 
         modalBody.innerHTML = `
+            <!-- Dossier Header Banner -->
             <div class="dossier-cert-banner">
                 <div>
                     <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin-bottom: 4px;">
-                        ${isAuto ? '🛡️ Sealed Evidence Dossier (VROL / Mastercom Compliant)' : '⚠️ Human-in-the-Loop Diagnostic Dossier'}
+                        ${isAuto ? '🛡️ Autonomous Representment Dossier (CE 3.0 / FPT Certified)' : '⚠️ Human-in-the-Loop Review Dossier'}
                     </h3>
                     <p style="font-size: 12px; color: var(--text-muted);">${dossier.summary}</p>
                 </div>
@@ -309,118 +503,136 @@ async function viewDossier(disputeId) {
                 </div>
             </div>
 
-            <!-- Identity Matching Matrix -->
+            <!-- Explainable AI Decision Card -->
+            <div style="background: var(--surface-2); border-radius: var(--radius-md); padding: 18px; border: 1px solid var(--border-color);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h4 style="font-size: 14px; font-weight: 600; color: var(--accent-cyan); margin: 0;">
+                        🧠 Explainable AI Decision &amp; Attribution Factors
+                    </h4>
+                    <span class="badge badge-visa">${explanation.rule_applied || dossier.card_network.toUpperCase()}</span>
+                </div>
+                <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">${explanation.summary || dossier.summary}</p>
+
+                ${positiveFactors.length > 0 ? `
+                    <div style="margin-bottom: 10px;">
+                        <span style="font-size: 11px; font-weight: 600; color: var(--accent-emerald); display: block; margin-bottom: 4px;">TOP POSITIVE FACTORS:</span>
+                        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                            ${positiveFactors.map(f => `<span class="factor-pill-pos">✅ ${f}</span>`).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+
+                ${negativeFactors.length > 0 ? `
+                    <div style="margin-bottom: 10px;">
+                        <span style="font-size: 11px; font-weight: 600; color: var(--accent-amber); display: block; margin-bottom: 4px;">ATTRIBUTION GAPS / NEGATIVE FACTORS:</span>
+                        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                            ${negativeFactors.map(f => `<span class="factor-pill-neg">⚠️ ${f}</span>`).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+
+                <div style="background: rgba(0,0,0,0.2); padding: 8px 12px; border-radius: 6px; font-size: 11px; color: var(--text-main); margin-top: 8px;">
+                    <strong>Recommendation:</strong> ${explanation.recommendation || 'Proceed with representment'}
+                </div>
+            </div>
+
+            <!-- Evidence Intelligence Matrix -->
             <div>
                 <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text-main);">
-                    🎯 Visa CE 3.0 & Mastercard FPT Matching Matrix
+                    🎯 Evidence Intelligence &amp; Multi-Factor Verification
                 </h4>
                 <div class="matrix-grid">
-                    <div class="matrix-card ${evalRes.matched_identifiers.includes('ip_address') ? 'matched' : 'missing'}">
-                        <div class="matrix-status">${evalRes.matched_identifiers.includes('ip_address') ? '✅' : '❌'}</div>
-                        <div class="matrix-title">Customer IP Address</div>
-                        <div class="matrix-desc">${dossier.telemetry.ip_address}</div>
+                    <div class="matrix-card ${dossier.mfa_verification ? 'matched' : 'missing'}">
+                        <div class="matrix-status">${dossier.mfa_verification ? '✅' : '❌'}</div>
+                        <div class="matrix-title">Authentication (3DS)</div>
+                        <div class="matrix-desc">${dossier.payment_authentication || (dossier.mfa_verification ? '3DS 2.2 Verified' : 'Frictionless')}</div>
                     </div>
-                    <div class="matrix-card ${evalRes.matched_identifiers.includes('device_id') ? 'matched' : 'missing'}">
-                        <div class="matrix-status">${evalRes.matched_identifiers.includes('device_id') ? '✅' : '❌'}</div>
-                        <div class="matrix-title">Device Fingerprint</div>
-                        <div class="matrix-desc">${dossier.telemetry.device_id.substring(0, 18)}...</div>
+                    <div class="matrix-card ${(dossier.delivery_proof && dossier.delivery_proof.delivered_status) || (dossier.carrier_proof && dossier.carrier_proof.delivered_status) ? 'matched' : 'missing'}">
+                        <div class="matrix-status">${(dossier.delivery_proof && dossier.delivery_proof.delivered_status) || (dossier.carrier_proof && dossier.carrier_proof.delivered_status) ? '✅' : '❌'}</div>
+                        <div class="matrix-title">Physical Carrier Proof</div>
+                        <div class="matrix-desc">${dossier.delivery_proof ? dossier.delivery_proof.carrier_name + ' (' + dossier.delivery_proof.tracking_number + ')' : (dossier.carrier_proof ? dossier.carrier_proof.carrier_name : 'No Proof')}</div>
                     </div>
-                    <div class="matrix-card ${evalRes.matched_identifiers.includes('user_id') ? 'matched' : 'missing'}">
-                        <div class="matrix-status">${evalRes.matched_identifiers.includes('user_id') ? '✅' : '❌'}</div>
-                        <div class="matrix-title">User Account ID</div>
-                        <div class="matrix-desc">${dossier.telemetry.user_id}</div>
+                    <div class="matrix-card ${(dossier.gps_verification && dossier.gps_verification.verified_within_50m) || (dossier.carrier_proof && dossier.carrier_proof.verified_gps) ? 'matched' : 'missing'}">
+                        <div class="matrix-status">${(dossier.gps_verification && dossier.gps_verification.verified_within_50m) || (dossier.carrier_proof && dossier.carrier_proof.verified_gps) ? '✅' : '❌'}</div>
+                        <div class="matrix-title">GPS Geolocation Scan</div>
+                        <div class="matrix-desc">${(dossier.gps_verification && dossier.gps_verification.verified_within_50m) ? '50m Radius Verified' : 'No GPS Match'}</div>
                     </div>
-                    <div class="matrix-card ${evalRes.carrier_verified ? 'matched' : 'missing'}">
-                        <div class="matrix-status">${evalRes.carrier_verified ? '✅' : '❌'}</div>
-                        <div class="matrix-title">Carrier Proof & GPS</div>
-                        <div class="matrix-desc">${dossier.carrier_proof ? dossier.carrier_proof.carrier_name + ' (GPS: ' + (evalRes.gps_verified ? 'Verified' : 'Unchecked') + ')' : 'Missing'}</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Score Breakdown -->
-            <div style="background: var(--surface-2); border-radius: var(--radius-md); padding: 18px;">
-                <h4 style="font-size: 13px; font-weight: 600; margin-bottom: 12px;">📊 Deterministic Score Formula Breakdown:</h4>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; font-size: 12px;">
-                    <div>
-                        <span style="color: var(--text-muted); display: block;">Network Rules (55 pts)</span>
-                        <strong style="color: ${evalRes.score_breakdown.network_compliance_points > 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'}">
-                            +${evalRes.score_breakdown.network_compliance_points || 0} pts
-                        </strong>
-                    </div>
-                    <div>
-                        <span style="color: var(--text-muted); display: block;">Carrier Delivery (35 pts)</span>
-                        <strong style="color: ${evalRes.score_breakdown.carrier_delivery_points > 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'}">
-                            +${evalRes.score_breakdown.carrier_delivery_points || 0} pts
-                        </strong>
-                    </div>
-                    <div>
-                        <span style="color: var(--text-muted); display: block;">GPS Radius Bonus (10 pts)</span>
-                        <strong style="color: ${evalRes.score_breakdown.carrier_gps_bonus > 0 ? 'var(--accent-emerald)' : 'var(--text-subtle)'}">
-                            +${evalRes.score_breakdown.carrier_gps_bonus || 0} pts
-                        </strong>
-                    </div>
-                    <div>
-                        <span style="color: var(--text-muted); display: block;">2FA/MFA Auth (5 pts)</span>
-                        <strong style="color: ${evalRes.score_breakdown.mfa_verification_points > 0 ? 'var(--accent-emerald)' : 'var(--text-subtle)'}">
-                            +${evalRes.score_breakdown.mfa_verification_points || 0} pts
-                        </strong>
+                    <div class="matrix-card ${(dossier.customer_history_summary && dossier.customer_history_summary.qualifying_orders_count >= 1) || dossier.historical_count >= 1 ? 'matched' : 'missing'}">
+                        <div class="matrix-status">${(dossier.customer_history_summary && dossier.customer_history_summary.qualifying_orders_count >= 1) || dossier.historical_count >= 1 ? '✅' : '❌'}</div>
+                        <div class="matrix-title">Historical Trust (CE 3.0)</div>
+                        <div class="matrix-desc">${dossier.customer_history_summary ? dossier.customer_history_summary.total_historical_orders + ' orders (' + dossier.customer_history_summary.undisputed_count + ' undisputed)' : dossier.historical_count + ' historical orders'}</div>
                     </div>
                 </div>
             </div>
 
-            <!-- Diagnostic Gaps (if HITL) -->
-            ${evalRes.diagnostic_gaps && evalRes.diagnostic_gaps.length > 0 ? `
-                <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: var(--radius-md); padding: 16px;">
-                    <h4 style="font-size: 13px; font-weight: 600; color: #fbbf24; margin-bottom: 8px;">⚠️ Actionable Diagnostic Gaps:</h4>
-                    <ul style="padding-left: 20px; font-size: 12px; color: #fed7aa; display: flex; flex-direction: column; gap: 4px;">
-                        ${evalRes.diagnostic_gaps.map(g => `<li>${g}</li>`).join('')}
-                    </ul>
-                </div>
-            ` : ''}
-
-            <!-- Economic Optimization E[V] Card -->
-            ${dossier.expected_value_inr !== undefined && dossier.expected_value_inr !== null ? `
-                <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: var(--radius-md); padding: 16px;">
-                    <h4 style="font-size: 13px; font-weight: 600; color: #38bdf8; margin-bottom: 8px;">💰 Net Recovery Expected Value (E[V]):</h4>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; font-size: 12px;">
-                        <div>
-                            <span style="color: var(--text-muted); display: block;">Calculated E[V]</span>
-                            <strong style="color: ${dossier.expected_value_inr > 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'}; font-size: 14px;">
-                                ${dossier.expected_value_inr > 0 ? '+' : ''}₹${dossier.expected_value_inr.toLocaleString()}
-                            </strong>
-                        </div>
-                        <div>
-                            <span style="color: var(--text-muted); display: block;">Win Probability P(win)</span>
-                            <strong style="color: var(--accent-cyan); font-size: 14px;">
-                                ${dossier.p_win ? (dossier.p_win * 100).toFixed(1) + '%' : 'N/A'}
-                            </strong>
-                        </div>
-                        <div>
-                            <span style="color: var(--text-muted); display: block;">Dispute Fee At Risk</span>
-                            <strong style="color: var(--accent-rose); font-size: 14px;">
-                                ₹1,500.00
-                            </strong>
+            <!-- Economic Expected Value (E[V]) Breakdown -->
+            <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: var(--radius-md); padding: 16px;">
+                <h4 style="font-size: 13px; font-weight: 600; color: #38bdf8; margin-bottom: 12px;">
+                    💰 Economic Net Recovery Expected Value E[V] = P(win)&middot;A &minus; (1&minus;P(win))&middot;F<sub>fee</sub> &minus; C<sub>op</sub>
+                </h4>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; font-size: 12px;">
+                    <div class="metric-box">
+                        <div class="metric-box-title">Disputed Amount (A)</div>
+                        <div class="metric-box-val" style="color: var(--text-main);">₹${dossier.amount_inr.toLocaleString()}</div>
+                    </div>
+                    <div class="metric-box">
+                        <div class="metric-box-title">Win Prob P(win)</div>
+                        <div class="metric-box-val" style="color: var(--accent-cyan);">${pWin}</div>
+                    </div>
+                    <div class="metric-box">
+                        <div class="metric-box-title">Net E[V]</div>
+                        <div class="metric-box-val" style="color: ${evVal >= 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">
+                            ${evVal >= 0 ? '+' : ''}₹${evVal.toLocaleString()}
                         </div>
                     </div>
-                </div>
-            ` : ''}
-
-            <!-- Constrained Rebuttal Letter Synthesizer Section -->
-            ${dossier.rebuttal_letter ? `
-                <div style="background: var(--surface-2); border-radius: var(--radius-md); padding: 16px; border: 1px solid var(--border-color);">
-                    <h4 style="font-size: 13px; font-weight: 600; color: #a78bfa; margin-bottom: 8px;">📄 Constrained Rebuttal Letter (Zero-Filler Network Synthesizer):</h4>
-                    <div style="font-size: 12px; line-height: 1.5; color: var(--text-main); background: rgba(0,0,0,0.25); padding: 12px; border-radius: 6px; font-family: var(--font-mono);">
-                        <p style="margin-bottom: 6px;"><strong>TO:</strong> ${dossier.card_network.toUpperCase()} Representment Review Board (${dossier.rebuttal_letter.reason_description || dossier.reason_code})</p>
-                        <p style="margin-bottom: 6px;"><strong>DISPUTE REF:</strong> ${dossier.dispute_id} | <strong>TRACKING:</strong> ${dossier.rebuttal_letter.tracking_number || 'N/A'}</p>
-                        <p style="margin-bottom: 8px;"><strong>FULFILLMENT STATUS:</strong> <span style="color: #34d399;">${dossier.rebuttal_letter.delivery_status || 'DELIVERED'}</span></p>
-                        <p style="color: #cbd5e1;"><em>"${dossier.rebuttal_letter.rebuttal_statement}"</em></p>
+                    <div class="metric-box">
+                        <div class="metric-box-title">Issuer Fee Risk</div>
+                        <div class="metric-box-val" style="color: var(--accent-rose);">₹1,500.00</div>
                     </div>
                 </div>
-            ` : ''}
+            </div>
+
+            <!-- Evidence Timeline Trail -->
+            <div style="background: var(--surface-2); border-radius: var(--radius-md); padding: 18px; border: 1px solid var(--border-color);">
+                <h4 style="font-size: 13px; font-weight: 600; color: #a855f7; margin-bottom: 14px;">
+                    ⏱️ Chronological Evidence &amp; Decision Timeline
+                </h4>
+                <div class="timeline-container">
+                    ${timelineEvents.length > 0 ? timelineEvents.map(ev => `
+                        <div class="timeline-node">
+                            <div class="timeline-dot"></div>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span class="timeline-title">${ev.title}</span>
+                                <span class="timeline-time">${ev.timestamp ? ev.timestamp.substring(11, 19) : ''}</span>
+                            </div>
+                            <div class="timeline-desc">${ev.description}</div>
+                        </div>
+                    `).join('') : '<div style="color: var(--text-muted); font-size: 12px;">No timeline events recorded.</div>'}
+                </div>
+            </div>
+
+            <!-- Modal Action Buttons Bar -->
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); padding-top: 16px;">
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-pdf" onclick="downloadPdf('${dossier.dispute_id}')">
+                        📥 Download Official PDF Packet
+                    </button>
+                    <button class="btn btn-secondary" onclick="window.open('/api/v1/disputes/${dossier.dispute_id}/representment-package', '_blank')">
+                        📄 View JSON Package
+                    </button>
+                    <button class="btn btn-secondary" onclick="assignPrompt('${dossier.dispute_id}')">
+                        👤 ${dossier.assigned_to ? 'Reassign (' + dossier.assigned_to + ')' : 'Assign Analyst'}
+                    </button>
+                </div>
+                ${!isAuto ? `
+                    <button class="btn btn-primary" style="background: linear-gradient(135deg, #f59e0b, #d97706); border-color: #f59e0b;" onclick="openRemediationModal('${dossier.dispute_id}')">
+                        🛠️ Remediate Evidence
+                    </button>
+                ` : ''}
+            </div>
 
             <!-- Cryptographic Seal Info -->
-            <div style="border-top: 1px solid var(--border-color); padding-top: 16px; font-size: 11px; font-family: var(--font-mono); color: var(--text-muted);">
+            <div style="border-top: 1px solid var(--border-color); padding-top: 12px; font-size: 11px; font-family: var(--font-mono); color: var(--text-muted);">
                 <div><strong>CRYPTOGRAPHIC SEAL:</strong> <span style="color: var(--accent-cyan);">${dossier.sealed_hash}</span></div>
                 <div><strong>TIMESTAMP:</strong> ${dossier.timestamp}</div>
             </div>

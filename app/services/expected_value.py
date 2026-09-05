@@ -29,9 +29,11 @@ def calibrate_win_probability(
     """
     score = max(0.0, min(100.0, float(confidence_score)))
     
-    if ce30_compliant or (score >= 85.0):
-        # CE 3.0 liability shift yields 88% - 98% empirical win rates
+    if (ce30_compliant or fpt_compliant) and (score >= 85.0):
+        # CE 3.0 / FPT liability shift yields 88% - 98% empirical win rates
         base_p = 0.70 + (0.28 * ((score - 85.0) / 15.0 if score > 85.0 else 0.0))
+    elif score >= 85.0:
+        base_p = 0.70 + (0.25 * ((score - 85.0) / 15.0))
     elif score >= 50.0:
         base_p = 0.40 + (0.30 * ((score - 50.0) / 35.0))
     else:
