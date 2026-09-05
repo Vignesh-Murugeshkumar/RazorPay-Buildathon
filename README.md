@@ -4,8 +4,9 @@
 > *Autonomous Dispute & Chargeback Defense Engine with Verifiable Evidence Grounding, Deterministic Safety Gates, and Tamper-Evident Audit Ledgers*
 
 [![Vercel Deployment](https://img.shields.io/badge/Vercel-Production%20Live-brightgreen?logo=vercel)](https://razor-pay-buildathon-pi.vercel.app/)
+[![CI Workflow](https://github.com/Vignesh-Murugeshkumar/RazorPay-Buildathon/actions/workflows/ci.yml/badge.svg)](https://github.com/Vignesh-Murugeshkumar/RazorPay-Buildathon/actions)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-009688?logo=fastapi)](https://fastapi.tiangolo.com)
-[![PyTest Suite](https://img.shields.io/badge/PyTest-118%20Passed-success)](tests/)
+[![PyTest Suite](https://img.shields.io/badge/PyTest-125%20Passed-success)](tests/)
 [![Security](https://img.shields.io/badge/HMAC--SHA256-Constant--Time-brightgreen)](#cryptographic-security)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -151,7 +152,7 @@ cd RazorPay-Buildathon
 pip install -r requirements.txt
 ```
 
-### 2. Run Test Suite (118 Tests)
+### 2. Run Test Suite (125 Tests)
 ```bash
 pytest tests/
 ```
@@ -182,16 +183,19 @@ Open **[http://localhost:8000](http://localhost:8000)** for the interactive dash
 | Method | Endpoint | Description |
 |---|---|---|
 | `POST` | `/api/v1/webhook/dispute` | Razorpay dispute webhook ingress with HMAC-SHA256 verification |
+| `POST` | `/api/v1/webhook?async=true` | Fast-ACK async webhook ingress, returns HTTP 202 with `task_id` |
+| `GET` | `/api/v1/queue/tasks/{task_id}` | Poll async dispute processing task status |
 | `GET` | `/api/v1/disputes` | List evaluated dispute dossiers, scores, and gate decisions |
 | `GET` | `/api/v1/disputes/{id}` | Deep-dive evidence dossier, AI investigation report, and cryptographic seal |
 | `POST` | `/api/v1/disputes/{id}/remediate` | Human-in-the-Loop evidence remediation endpoint |
 | `GET` | `/api/v1/disputes/{id}/representment-pdf` | Download signed legal representment document |
+| `POST` | `/api/v1/disputes/outcomes/batch` | Batch ingest gateway settlement dispute resolution outcomes |
+| `GET` | `/api/v1/disputes/calibration/status` | Empirical win probability calibration status and Brier/ECE metrics |
+| `POST` | `/api/v1/disputes/calibration/train` | Empirical Platt Scaling calibrator training on historical outcomes |
 | `GET` | `/api/v1/audit/integrity` | Verify SHA-256 cryptographic hash chain integrity |
 | `GET` | `/api/v1/audit/blocks` | Inspect raw tamper-evident ledger blocks |
 | `POST` | `/api/v1/simulate` | Interactive dispute scenario simulation |
 | `POST` | `/api/v1/benchmark/run` | Execute 115-scenario held-out benchmark on demand |
-| `POST` | `/api/v1/webhook?async=true` | Fast-ACK async webhook ingress, returns HTTP 202 with `task_id` |
-| `GET` | `/api/v1/queue/tasks/{task_id}` | Poll async dispute processing task status |
 
 ---
 

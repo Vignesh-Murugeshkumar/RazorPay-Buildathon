@@ -1,0 +1,65 @@
+name: SentinelDispute CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test & Verify (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    env:
+      ENVIRONMENT: test
+      TEST_MODE: "1"
+      RAZORPAY_WEBHOOK_SECRET: sentinel_secret_key_dev
+      WEBHOOK_SECRET: sentinel_secret_key_dev
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Python Bytecode Compilation (Syntax Verification)
+        run: |
+          python -m compileall app api tests
+
+      - name: Execute Pytest Suite (All Tests)
+        run: |
+          pytest -v --tb=short
+
+      - name: Cryptographic Audit Chain Integrity Verification
+        run: |
+          pytest tests/test_audit_ledger.py -v
+
+      - name: Production Database Fail-Closed Verification
+        run: |
+          pytest tests/test_database_fail_closed.py -v
+
+      - name: Security & PII Redaction Verification
+        run: |
+          pytest tests/test_security.py -v
+
+      - name: Benchmark Verification (Sentinel Mode)
+        run: |
+          python tests/run_benchmark.py --mode=sentinel --limit=10

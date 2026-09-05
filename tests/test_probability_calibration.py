@@ -117,3 +117,96 @@ def test_expected_value_with_calibrated_estimator():
     assert ev_result.calibration_method == "platt_calibrated"
     assert ev_result.is_calibrated is True
     assert ev_result.estimated_win_probability > 0.0
+
+
+def test_fit_platt_scaling_insufficient_samples():
+    """Calibration fitting must refuse to fit when outcomes are fewer than min_samples."""
+    from app.services.probability.calibration import fit_platt_scaling_model
+
+    small_dataset = [
+        {"outcome": "won", "confidence_score": 90.0, "ce30_compliant": True},
+        {"outcome": "lost", "confidence_score": 40.0, "ce30_compliant": False},
+    ]
+
+    estimator, diag = fit_platt_scaling_model(small_dataset, min_samples=50)
+    assert estimator is None
+    assert diag["status"] == "insufficient_data"
+    assert diag["is_fitted"] is False
+    assert "Retaining HeuristicBaselineEstimator" in diag["message"]
+
+
+def test_fit_platt_scaling_sufficient_samples():
+    """Calibration fitting with sufficient samples trains weights and computes metrics."""
+    from app.services.probability.calibration import fit_platt_scaling_model
+
+    dataset = []
+    for i in range(30):
+        # 30 won high-confidence
+        dataset.append({
+            "outcome": "won",
+            "confidence_score": 85.0 + (i % 15),
+            "ce30_compliant": True,
+            "fpt_compliant": False,
+            "issuer_adjustment": 0.05
+        })
+    for i in range(30):
+        # 30 lost low-confidence
+        dataset.append({
+            "outcome": "lost",
+            "confidence_score": 25.0 + (i % 20),
+            "ce30_compliant": False,
+            "fpt_compliant": False,
+            "issuer_adjustment": -0.05
+        })
+
+    estimator, diag = fit_platt_scaling_model(dataset, min_samples=50)
+    assert estimator is not None
+    assert diag["status"] == "calibrated"
+    assert diag["is_fitted"] is True
+    assert diag["samples_trained"] == 60
+    assert diag["brier_score"] is not None
+    assert diag["brier_score"] < 0.25  # Substantially better than random guessing
+    assert diag["expected_calibration_error"] is not None
+    assert "weights" in diag
+
+
+def test_batch_outcome_ingestion_and_status_api():
+    """Endpoints /outcomes/batch and /calibration/status work seamlessly."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+
+    batch_payload = {
+        "outcomes": [
+            {
+                "event": "payment.dispute.won",
+                "dispute_id": f"disp_test_out_{i}",
+                "card_bin": "999999",
+                "network": "visa",
+                "reason_code": "10.4",
+                "outcome": "won" if i % 2 == 0 else "lost",
+                "amount_inr": 1500.0,
+                "confidence_score": 88.0 if i % 2 == 0 else 42.0
+            }
+            for i in range(10)
+        ]
+    }
+
+    res = client.post("/api/v1/disputes/outcomes/batch", json=batch_payload)
+    assert res.status_code == 200
+    assert res.json()["ingested_count"] == 10
+
+    # Check status endpoint
+    status_res = client.get("/api/v1/disputes/calibration/status")
+    assert status_res.status_code == 200
+    s_data = status_res.json()
+    assert s_data["total_outcomes_recorded"] >= 10
+    assert s_data["active_estimator"] in ("heuristic_baseline", "platt_calibrated")
+
+    # Train endpoint with min_samples=5 should succeed on 10 records
+    train_res = client.post("/api/v1/disputes/calibration/train?min_samples=5")
+    assert train_res.status_code == 200
+    t_data = train_res.json()
+    assert t_data["status"] == "calibrated"
+    assert t_data["is_fitted"] is True

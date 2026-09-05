@@ -93,3 +93,117 @@ def test_queue_task_not_found_returns_404():
     """Polling a non-existent task_id must return HTTP 404."""
     response = client.get("/api/v1/queue/tasks/task_does_not_exist")
     assert response.status_code == 404
+
+
+class FakeRedisClient:
+    """In-memory Redis fake for unit testing RedisDisputeQueue without a live Redis server."""
+    def __init__(self):
+        self.store = {}
+        self.lists = {}
+
+    def ping(self):
+        return True
+
+    def setex(self, key, ttl, val):
+        self.store[key] = val
+
+    def get(self, key):
+        return self.store.get(key)
+
+    def lpush(self, key, val):
+        self.lists.setdefault(key, []).insert(0, val)
+
+    def rpop(self, key):
+        l = self.lists.get(key, [])
+        return l.pop() if l else None
+
+    def llen(self, key):
+        return len(self.lists.get(key, []))
+
+
+def test_redis_dispute_queue_operations():
+    """RedisDisputeQueue should enqueue, persist state, and execute jobs."""
+    from app.services.queue.queue import RedisDisputeQueue
+
+    fake_redis = FakeRedisClient()
+    queue = RedisDisputeQueue(redis_client=fake_redis, auto_consume=False)
+
+    task = DisputeQueueTask(dispute_id="disp_redis_01", correlation_id="corr_redis_01")
+    payload = {
+        "event": "payment.dispute.created",
+        "dispute_id": "disp_redis_01",
+        "payment_id": "pay_redis_01",
+        "amount_inr": 2500.0,
+        "card_network": "visa",
+        "reason_code": "10.4"
+    }
+
+    task_id = queue.enqueue(task, payload)
+    assert task_id == task.task_id
+    assert queue.get_queue_depth() == 1
+
+    fetched_task = queue.get_task(task_id)
+    assert fetched_task is not None
+    assert fetched_task.status == "PENDING"
+
+    # Manually consume/execute
+    processed = queue.process_next_job()
+    assert processed is not None
+    assert processed.status == "COMPLETED"
+    assert queue.get_queue_depth() == 0
+    assert processed.result["dispute_id"] == "disp_redis_01"
+
+
+def test_redis_queue_dlq_on_poison_pill():
+    """Poison-pill payloads should fail and be routed to Dead Letter Queue (DLQ)."""
+    from app.services.queue.queue import RedisDisputeQueue
+
+    fake_redis = FakeRedisClient()
+    queue = RedisDisputeQueue(redis_client=fake_redis, auto_consume=False)
+
+    task = DisputeQueueTask(dispute_id="disp_poison_01", correlation_id="corr_poison_01")
+    invalid_payload = {"malformed": "not_a_dispute"}
+
+    task_id = queue.enqueue(task, invalid_payload)
+    assert queue.get_queue_depth() == 1
+    assert queue.get_dlq_depth() == 0
+
+    processed = queue.process_next_job()
+    assert processed is not None
+    assert processed.status == "FAILED"
+    assert queue.get_queue_depth() == 0
+    assert queue.get_dlq_depth() == 1
+
+
+def test_queue_factory_production_fail_closed(monkeypatch):
+    """In production, QUEUE_BACKEND='redis' must fail closed if Redis is unavailable."""
+    from app.services.queue.queue import get_dispute_queue
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(settings, "QUEUE_BACKEND", "redis")
+    monkeypatch.setattr(settings, "REDIS_URL", "redis://invalid_host:6379/0")
+
+    with pytest.raises(RuntimeError, match="Production QUEUE_BACKEND='redis' required"):
+        get_dispute_queue(reset=True)
+
+    # Undo monkeypatch and reset back to default
+    monkeypatch.undo()
+    get_dispute_queue(reset=True)
+
+
+def test_queue_factory_development_fallback(monkeypatch):
+    """In development, QUEUE_BACKEND='redis' falls back to in-memory queue if unavailable."""
+    from app.services.queue.queue import get_dispute_queue, InMemoryBackgroundQueue
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ENVIRONMENT", "development")
+    monkeypatch.setattr(settings, "QUEUE_BACKEND", "redis")
+    monkeypatch.setattr(settings, "REDIS_URL", "redis://invalid_host:6379/0")
+
+    q = get_dispute_queue(reset=True)
+    assert isinstance(q, InMemoryBackgroundQueue)
+
+    # Undo monkeypatch and reset back to default
+    monkeypatch.undo()
+    get_dispute_queue(reset=True)

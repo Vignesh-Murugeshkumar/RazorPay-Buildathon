@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     # Optional Redis / Database connections
     REDIS_URL: Optional[str] = os.getenv("REDIS_URL", None)
     DATABASE_URL: Optional[str] = os.getenv("DATABASE_URL", None)
+    QUEUE_BACKEND: str = os.getenv("QUEUE_BACKEND", "memory")  # "memory" | "redis"
+    QUEUE_REDIS_URL: Optional[str] = os.getenv("QUEUE_REDIS_URL", None)
 
     # Security & Traffic Thresholds
     AUTO_DISPATCH_THRESHOLD: float = 85.0

@@ -60,6 +60,108 @@ async def record_dispute_resolution_outcome(payload: DisputeOutcomeWebhook):
     }
 
 
+@router.post("/outcomes/batch", status_code=status.HTTP_200_OK)
+async def batch_record_dispute_outcomes(payload: Dict[str, List[DisputeOutcomeWebhook]]):
+    """
+    Ingests batch historical dispute resolution outcomes (e.g. from gateway settlement reports or archives).
+    """
+    items = payload.get("outcomes", [])
+    if not items:
+        raise HTTPException(status_code=400, detail="Empty outcomes list provided.")
+
+    ingested = 0
+    for item in items:
+        outcome_val = item.outcome
+        if not outcome_val:
+            outcome_val = "won" if "won" in item.event.lower() else "lost"
+
+        issuer_intelligence.record_dispute_resolution(
+            dispute_id=item.dispute_id,
+            card_bin=item.card_bin or "424242",
+            issuing_bank=item.issuing_bank or "Global Issuing Bank",
+            network=item.network,
+            reason_code=item.reason_code,
+            outcome=outcome_val,
+            amount_inr=item.amount_inr,
+            confidence_score=item.confidence_score,
+            evidence_types_used=item.evidence_types_used
+        )
+        ingested += 1
+
+    return {
+        "status": "success",
+        "ingested_count": ingested,
+        "message": f"Successfully ingested {ingested} dispute resolution outcomes."
+    }
+
+
+# Active calibrated model storage
+_CALIBRATED_ESTIMATOR = None
+
+
+@router.get("/calibration/status")
+async def get_calibration_status():
+    """
+    Returns empirical calibration metrics against historical dispute outcomes in the database.
+    Honest provenance: clearly indicates if sample count is sufficient for true calibration.
+    """
+    outcomes = db.get_bin_outcomes()
+    total = len(outcomes)
+    won = sum(1 for o in outcomes if str(o.get("outcome", "")).lower() in ("won", "dispute.won"))
+    lost = total - won
+
+    from app.services.probability.calibration import calculate_brier_score, calculate_expected_calibration_error
+
+    metrics = {
+        "total_outcomes_recorded": total,
+        "outcomes_won": won,
+        "outcomes_lost": lost,
+        "empirical_win_rate": round(won / total, 4) if total > 0 else None,
+        "min_samples_threshold": 50,
+        "active_estimator": "platt_calibrated" if _CALIBRATED_ESTIMATOR is not None else "heuristic_baseline",
+        "is_calibrated": _CALIBRATED_ESTIMATOR is not None,
+    }
+
+    if total >= 5:
+        y_true = [1 if str(o.get("outcome", "")).lower() in ("won", "dispute.won") else 0 for o in outcomes]
+        y_prob = [float(o.get("confidence_score", 50.0)) / 100.0 for o in outcomes]
+        metrics["brier_score"] = calculate_brier_score(y_true, y_prob)
+        metrics["expected_calibration_error"] = calculate_expected_calibration_error(y_true, y_prob)
+    else:
+        metrics["brier_score"] = None
+        metrics["expected_calibration_error"] = None
+        metrics["note"] = "Insufficient empirical outcomes (< 5) to compute statistically sound calibration error."
+
+    return metrics
+
+
+@router.post("/calibration/train", status_code=status.HTTP_200_OK)
+async def train_empirical_calibration(
+    min_samples: int = 50,
+    learning_rate: float = 0.05,
+    max_epochs: int = 250
+):
+    """
+    Trains Platt Scaling logistic regression on empirical dispute outcomes in the database.
+    Safely rejects fitting if fewer than `min_samples` (default: 50) records are present.
+    """
+    global _CALIBRATED_ESTIMATOR
+    outcomes = db.get_bin_outcomes()
+
+    from app.services.probability.calibration import fit_platt_scaling_model
+    estimator, diagnostics = fit_platt_scaling_model(
+        outcomes=outcomes,
+        min_samples=min_samples,
+        learning_rate=learning_rate,
+        max_epochs=max_epochs
+    )
+
+    if estimator is not None:
+        _CALIBRATED_ESTIMATOR = estimator
+
+    return diagnostics
+
+
 @router.get("/issuer-intelligence/profile/{card_bin}", response_model=BINProfile)
 async def get_bin_intelligence_profile(card_bin: str):
     """
