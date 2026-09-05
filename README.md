@@ -1,12 +1,12 @@
-# 🛡️ SentinelDispute — AI-Assisted Dispute Defense Engine
+# 🛡️ SentinelDispute — Evidence-Grounded AI Risk Investigation Engine
 
 > **Razorpay AI Buildathon — Selected Track: AI Risk Manager**  
-> *Autonomous Dispute & Chargeback Defense Engine with Verifiable Evidence Grounding, Deterministic Financial Safety Gates, and Tamper-Evident Audit Chains*
+> *Evidence-Grounded Dispute & Chargeback Defense Engine with Adversarial Claim Challenges, Independent Verification, Deterministic Policy Controls, and Tamper-Evident Provenance*
 
 [![Vercel Deployment](https://img.shields.io/badge/Vercel-Production%20Live-brightgreen?logo=vercel)](https://razor-pay-buildathon-pi.vercel.app/)
 [![CI Workflow](https://github.com/Vignesh-Murugeshkumar/RazorPay-Buildathon/actions/workflows/ci.yml/badge.svg)](https://github.com/Vignesh-Murugeshkumar/RazorPay-Buildathon/actions)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-009688?logo=fastapi)](https://fastapi.tiangolo.com)
-[![PyTest Suite](https://img.shields.io/badge/PyTest-125%20Passed-success)](tests/)
+[![PyTest Suite](https://img.shields.io/badge/PyTest-148%20Passed-success)](tests/)
 [![Security](https://img.shields.io/badge/HMAC--SHA256-Constant--Time-brightgreen)](#security-and-compliance-invariants)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -22,74 +22,73 @@
 
 ---
 
-## ⚡ 60-Second Senior Recruiter & Staff Engineer Overview
+## ⚡ What SentinelDispute Is
+
+**SentinelDispute** is an **evidence-grounded AI risk investigation system** that does not simply classify a dispute. It investigates the case, links every conclusion to immutable evidence, searches for contradictory explanations, independently verifies findings, applies deterministic card brand policy, and preserves a complete cryptographic provenance trail.
+
+The entire investigation follows the strict pipeline:
+$$\mathbf{Evidence} \longrightarrow \mathbf{Retrieval} \longrightarrow \mathbf{Investigation} \longrightarrow \mathbf{Claims} \longrightarrow \mathbf{Challenge} \longrightarrow \mathbf{Independent\ Verification} \longrightarrow \mathbf{Policy\ Engine} \longrightarrow \mathbf{Decision} \longrightarrow \mathbf{Provenance}$$
+
+Every important AI conclusion is grounded in immutable evidence (`EV-001`..`EV-007`), challenged by an adversarial challenger seeking contrary evidence, independently verified, checked against deterministic policy rules, and permanently traceable.
 
 ### 1. What Problem Does It Solve?
 Automating cardholder dispute investigation and representment (Visa CE 3.0, Mastercard FPT) while strictly preventing unsafe AI-driven financial actions. Erroneously auto-dispatching unprovable chargebacks triggers catastrophic **₹1,500–₹45,000 non-refundable bank arbitration penalties**.
 
 ### 2. Core Architectural Insight
-**"AI should investigate, but deterministic code must hold all financial authority."**  
-The LLM is an unprivileged, advisory-only reasoning component. It synthesizes messy multi-source evidence, drafts factual claims, and challenges its own reasoning. It has **zero execution authority** to move money, authorize representment, or bypass network rules.
+**"AI should investigate and challenge hypotheses, but deterministic policy must hold all financial authority."**  
+The LLM proposes candidate claims linked to concrete evidence IDs. It has **zero execution authority** to move money, authorize representment, or bypass network rules. If the Challenger finds contradictory evidence or the Verifier rejects an ungrounded claim, the system downgrades confidence and routes the dispute to human analysts or safely auto-refunds.
 
 ### 3. Canonical Architecture Pipeline
 
 ```text
-                  SENTINELDISPUTE AI-ASSISTED DISPUTE DEFENSE
-                                    RAZORPAY
-                                       │ HMAC + Replay
-                                       ▼
-                                Evidence Engine
-                                       │ EV-001...EV-007
-                                       ▼
-                                AI INVESTIGATOR
-                                ┌──────┴──────┐
-                                │             │
-                            Policy KB   Self-Challenge
-                                │             │
-                                └──────┬──────┘
-                                       ▼
-                             DETERMINISTIC VERIFIER
-                                       ▼
-                                 NETWORK RULES
-                                       ▼
-                                EXPECTED VALUE
-                                       ▼
-                                  SAFETY GATE
-                                       │
-                      ┌────────────────┼────────────────┐
-                      ▼                ▼                ▼
-                     AUTO             HITL            ACCEPT
-                      │                │                │
-                      └────────────────┼────────────────┘
-                                       ▼
-                                  AUDIT CHAIN
+Evidence
+   ↓
+Retrieval
+   ↓
+Investigation (Candidate Claims)
+   ↓
+Claims [CLM-001...CLM-n]
+   ↓
+Adversarial Challenge (Disproving Analysis & Counter-Evidence)
+   ↓
+Independent Verification (Grounding & Veto)
+   ↓
+Policy Engine (Deterministic Network Rules & Expected Value)
+   ↓
+Decision (Structured Machine-Readable Assessment)
+   ↓
+Provenance (6-Tier DAG & Tamper-Evident SHA-256 Event Hash Chain)
 ```
 
 ```mermaid
 flowchart TD
     RZP[Razorpay Webhook Ingress] -->|HMAC-SHA256 + Replay Guard| EE[Evidence Engine EV-001..EV-007]
     
-    subgraph AI_ADVISORY["AI Advisory Layer (Zero Financial Authority)"]
-        EE --> AI[AI Investigator]
-        KB[(Local Policy KB)] -->|TF-IDF Excerpts| AI
-        AI --> SC[2-Pass Adversarial Self-Challenge]
+    subgraph EVIDENCE_LAYER["1. Evidence Ingestion & Hashing"]
+        EE -->|Canonical Extraction & SHA-256 Digestion| ITEMS[Immutable Evidence Items EV-001..EV-007]
     end
     
-    subgraph DETERMINISTIC_AUTHORITY["Deterministic Decision & Financial Control"]
-        SC --> DEV[Deterministic Evidence Verifier]
-        EE -.->|Grounding Truth| DEV
-        DEV --> NR[Network Policy Rules: Visa CE 3.0 / MC FPT]
-        NR --> EV[Expected Value Engine E[V]]
-        EV --> SG[Deterministic Financial Safety Gate]
+    subgraph AI_INVESTIGATION["2. Investigation & Adversarial Reasoning Layer"]
+        ITEMS --> INV[AI Investigator: Candidate Claims CLM-xxx]
+        KB[(Local Scheme KB)] -->|Deterministic Extraction| INV
+        INV --> CHAL[Claim Challenger: Disproving Analysis & Counter-Evidence Search]
     end
     
-    SG -->|Sc >= 85, E[V] > 0, Verified| AUTO[AUTO_REPRESENT]
-    SG -->|Evidence Gap, Conflict, Uncertain| HITL[HITL_REVIEW]
-    SG -->|E[V] <= 0, Non-Defensible| ACCEPT[ACCEPT_LOSS]
+    subgraph INDEPENDENT_VERIFICATION["3. Independent Verification & Policy Layer"]
+        CHAL --> VERIF[Deterministic Evidence Verifier: Grounding Ratio & Contradiction Veto]
+        ITEMS -.->|Grounding Truth| VERIF
+        VERIF --> POL[Deterministic Policy Engine: Visa CE 3.0 / MC FPT / RuPay]
+        POL --> EV[Expected Value Engine E[V]]
+        EV --> GATE[Deterministic Safety Gate]
+    end
     
-    AUTO --> AC[(Tamper-Evident SHA-256 Audit Chain)]
-    HITL --> AC
-    ACCEPT --> AC
+    GATE -->|Verified, CE3.0/FPT Compliant, E[V] > 0| AUTO[AUTO_DISPATCHED]
+    GATE -->|Gaps, Contradictions, or Overturned Claims| HITL[ROUTE_TO_HITL_QUEUE]
+    GATE -->|Negative E[V], Unprovable, or Missing Evidence| ACCEPT[AUTO_ACCEPT_OR_REFUND]
+    
+    AUTO --> PROV[(6-Tier Provenance DAG & Tamper-Evident Ledger)]
+    HITL --> PROV
+    ACCEPT --> PROV
 ```
 
 ---

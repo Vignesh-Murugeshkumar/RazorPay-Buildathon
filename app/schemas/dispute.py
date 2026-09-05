@@ -12,6 +12,21 @@ class EvidenceStatus(str, Enum):
     CONTRADICTED = "CONTRADICTED"
 
 
+class ClaimSupportStatus(str, Enum):
+    SUPPORTED = "supported"
+    WEAKLY_SUPPORTED = "weakly_supported"
+    UNSUPPORTED = "unsupported"
+    CONTRADICTED = "contradicted"
+
+
+class RiskLevel(str, Enum):
+    CONFIRMED_RISK = "CONFIRMED_RISK"
+    LIKELY_RISK = "LIKELY_RISK"
+    UNCERTAIN = "UNCERTAIN"
+    LIKELY_LEGITIMATE = "LIKELY_LEGITIMATE"
+    INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
+
+
 class EvidenceItem(BaseModel):
     evidence_id: str
     evidence_type: str
@@ -22,6 +37,68 @@ class EvidenceItem(BaseModel):
     score_contribution: float = 0.0
     supports_claim_ids: List[str] = Field(default_factory=list)
     details: Optional[Dict[str, Any]] = None
+
+    # Grounded Investigation Metadata
+    case_id: Optional[str] = None
+    source_type: str = "system"
+    source_id: Optional[str] = None
+    content: str = ""
+    timestamp: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    reliability: float = 1.0
+    retrieval_score: float = 1.0
+    hash: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+class InvestigationClaim(BaseModel):
+    claim_id: str = Field(default="CLM-001", description="Unique claim identifier, e.g. CLM-001")
+    claim: str = Field(..., description="Factual assertion grounded in evidence")
+    evidence_ids: List[str] = Field(default_factory=list, description="Referenced evidence IDs")
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0, description="Confidence level between 0.0 and 1.0")
+    claim_type: str = Field(default="behavioral_anomaly", description="Type: behavioral_anomaly, delivery, authentication, etc.")
+    support_status: ClaimSupportStatus = Field(default=ClaimSupportStatus.SUPPORTED)
+
+
+class ClaimChallenge(BaseModel):
+    claim_id: str = Field(..., description="Target claim being challenged")
+    challenge: str = Field(..., description="Adversarial inquiry attempting to disprove claim")
+    contrary_evidence_ids: List[str] = Field(default_factory=list, description="Evidence contradicting or weakening the claim")
+    alternative_explanation: str = Field(default="", description="Plausible alternative non-fraud hypothesis")
+    missing_evidence: List[str] = Field(default_factory=list, description="Missing evidence that would validate or disprove")
+    challenge_strength: float = Field(default=0.0, ge=0.0, le=1.0, description="Strength of contrary challenge (0.0 to 1.0)")
+    challenge_result: str = Field(default="sustained", description="overturned | weakened | sustained")
+
+
+class ClaimVerificationResult(BaseModel):
+    claim_id: str = Field(..., description="Verified claim identifier")
+    verification_status: str = Field(..., description="supported | partially_supported | unsupported | contradicted")
+    supporting_evidence: List[str] = Field(default_factory=list, description="Validated supporting evidence IDs")
+    contradicting_evidence: List[str] = Field(default_factory=list, description="Discovered contradicting evidence IDs")
+    unsupported_reason: Optional[str] = Field(None, description="Detailed explanation if ungrounded or rejected")
+    verified_confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Post-verification adjusted confidence")
+
+
+class DecisionExplainer(BaseModel):
+    finding: str = Field(..., description="Core risk finding")
+    evidence: List[str] = Field(default_factory=list, description="Evidence supporting finding")
+    counter_evidence: List[str] = Field(default_factory=list, description="Counter-evidence found")
+    verification: str = Field(..., description="Independent verification outcome")
+    policy: str = Field(..., description="Deterministic policy applied")
+    uncertainty: str = Field(..., description="Uncertainties and missing evidence")
+    decision: str = Field(..., description="Recommended final action")
+
+
+class InvestigationDecision(BaseModel):
+    decision: str = Field(..., description="AUTO_REPRESENT | HITL_REVIEW | ACCEPT_LOSS | ESCALATE")
+    risk_level: str = Field(default="UNCERTAIN", description="CONFIRMED_RISK | LIKELY_RISK | UNCERTAIN | LIKELY_LEGITIMATE | INSUFFICIENT_EVIDENCE")
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Deterministic bounded confidence score")
+    verified_claims: List[str] = Field(default_factory=list, description="Claim IDs that survived verification")
+    contradicting_claims: List[str] = Field(default_factory=list, description="Claim IDs contradicted or overturned")
+    policy_ids: List[str] = Field(default_factory=list, description="Explicit deterministic policy IDs evaluated")
+    required_actions: List[str] = Field(default_factory=list, description="Required operational steps")
+    insufficient_evidence: bool = Field(default=False, description="True if evidence is insufficient to conclude")
+    explainer: Optional[DecisionExplainer] = None
 
 
 class EvidenceContradiction(BaseModel):
@@ -243,6 +320,13 @@ class Dossier(BaseModel):
     ai_verification: Optional[Dict[str, Any]] = None
     safety_gate: Optional[Dict[str, Any]] = None
     failure_provenance: Optional[Dict[str, Any]] = None
+
+    # Evidence-Grounded Investigation Pipeline Artifacts
+    investigation_claims: List[InvestigationClaim] = Field(default_factory=list)
+    claim_challenges: List[ClaimChallenge] = Field(default_factory=list)
+    claim_verifications: List[ClaimVerificationResult] = Field(default_factory=list)
+    investigation_decision: Optional[InvestigationDecision] = None
+    decision_explainer: Optional[DecisionExplainer] = None
 
 
 

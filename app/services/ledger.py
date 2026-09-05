@@ -157,6 +157,9 @@ class AuditLedger:
             raw_to_hash = f"{prev_hash}||{timestamp}||{agent_id}||{state_transition}||{payload_hash}"
             block_hash = compute_sha256_hash(raw_to_hash)
 
+            if not dispute_id and isinstance(payload, dict) and "dispute_id" in payload:
+                dispute_id = str(payload["dispute_id"])
+
             new_block = LedgerBlock(
                 index=index,
                 previous_hash=prev_hash,
@@ -265,6 +268,14 @@ class AuditLedger:
     def verify_chain(self) -> Tuple[bool, Optional[str]]:
         report = self.verify_integrity()
         return report.is_valid, report.discrepancy_details
+
+    def get_blocks_by_dispute(self, dispute_id: str) -> List[LedgerBlock]:
+        self._sync_with_db()
+        with self._lock:
+            return [
+                b for b in self.chain
+                if getattr(b, "dispute_id", None) == dispute_id
+            ]
 
     def reset_for_tests(self, genesis_seed: Optional[str] = None):
         with self._lock:

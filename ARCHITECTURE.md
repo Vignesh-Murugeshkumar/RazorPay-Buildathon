@@ -9,65 +9,60 @@
 
 In financial risk systems, unconstrained Large Language Models (LLMs) cannot be trusted with autonomous authority over capital movement or legal card-network submissions. A hallucinated tracking number, an ungrounded claim of customer presence, or an automated submission against an ineligible dispute incurs immediate non-refundable issuer arbitration penalties (₹1,500 – ₹45,000) and threatens merchant payment gateway standing.
 
-**SentinelDispute** solves this fundamental trust challenge through a strictly bounded, defense-in-depth architecture where **AI is advisory-only and deterministic code holds all financial authority**:
+**SentinelDispute** solves this fundamental trust challenge through a strictly bounded, defense-in-depth pipeline:
+$$\mathbf{Evidence} \longrightarrow \mathbf{Retrieval} \longrightarrow \mathbf{Investigation} \longrightarrow \mathbf{Claims} \longrightarrow \mathbf{Challenge} \longrightarrow \mathbf{Independent\ Verification} \longrightarrow \mathbf{Policy\ Engine} \longrightarrow \mathbf{Decision} \longrightarrow \mathbf{Provenance}$$
+
+Where **AI is advisory-only and deterministic policy holds all financial authority**:
 
 ```text
-                  SENTINELDISPUTE AI-ASSISTED DISPUTE DEFENSE
-                                    RAZORPAY
-                                       │ HMAC + Replay
-                                       ▼
-                                Evidence Engine
-                                       │ EV-001...EV-007
-                                       ▼
-                                AI INVESTIGATOR
-                                ┌──────┴──────┐
-                                │             │
-                            Policy KB   Self-Challenge
-                                │             │
-                                └──────┬──────┘
-                                       ▼
-                             DETERMINISTIC VERIFIER
-                                       ▼
-                                 NETWORK RULES
-                                       ▼
-                                EXPECTED VALUE
-                                       ▼
-                                  SAFETY GATE
-                                       │
-                      ┌────────────────┼────────────────┐
-                      ▼                ▼                ▼
-                     AUTO             HITL            ACCEPT
-                      │                │                │
-                      └────────────────┼────────────────┘
-                                       ▼
-                                  AUDIT CHAIN
+Evidence [EV-001..EV-007 with SHA-256 Hashes]
+   ↓
+Retrieval (Card Brand Regulatory Rules & Policy Excerpts)
+   ↓
+AI Investigation (Drafts Candidate Claims linked strictly to Evidence IDs)
+   ↓
+Claims [CLM-001...CLM-n]
+   ↓
+Adversarial Challenge (ClaimChallenger searches for Contrary Evidence & Alternative Explanations)
+   ↓
+Independent Verification (DeterministicEvidenceVerifier checks Grounding & Vetoes Overturned Claims)
+   ↓
+Deterministic Policy Engine (Evaluates Visa CE 3.0, MC FPT, RuPay & Expected Value E[V])
+   ↓
+Decision Engine (Produces Structured InvestigationDecision with Uncertainty Taxonomy)
+   ↓
+Provenance (6-Tier DAG & Tamper-Evident SHA-256 Audit Event Hash Chain)
 ```
 
 ```mermaid
 flowchart TD
     RZP[Razorpay Webhook Ingress] -->|HMAC-SHA256 + Replay Guard| EE[Evidence Engine EV-001..EV-007]
     
-    subgraph AI_ADVISORY["AI Advisory Layer (Zero Financial Authority)"]
-        EE --> AI[AI Investigator]
-        KB[(Local Policy KB)] -->|TF-IDF Excerpts| AI
-        AI --> SC[2-Pass Adversarial Self-Challenge]
+    subgraph EVIDENCE_TIER["1. Immutable Evidence Model"]
+        EE -->|Extracts & SHA-256 Hashes| ITEMS[Evidence Items EV-001..EV-007]
     end
     
-    subgraph DETERMINISTIC_AUTHORITY["Deterministic Decision & Financial Control"]
-        SC --> DEV[Deterministic Evidence Verifier]
-        EE -.->|Grounding Truth| DEV
-        DEV --> NR[Network Policy Rules: Visa CE 3.0 / MC FPT]
-        NR --> EV[Expected Value Engine E[V]]
-        EV --> SG[Deterministic Financial Safety Gate]
+    subgraph ADVERSARIAL_AI["2. Adversarial Investigation & Challenge Layer"]
+        ITEMS --> INV[AI Investigator: Candidate Claims CLM-xxx]
+        KB[(Local Scheme KB)] -->|Deterministic Extraction| INV
+        INV --> CHAL[Claim Challenger: Disproving Analysis & Counter-Evidence Search]
     end
     
-    SG -->|Sc >= 85, E[V] > 0, Verified| AUTO[AUTO_REPRESENT]
-    SG -->|Evidence Gap, Conflict, Uncertain| HITL[HITL_REVIEW]
-    SG -->|E[V] <= 0, Non-Defensible| ACCEPT[ACCEPT_LOSS]
+    subgraph VERIFICATION_POLICY["3. Independent Verification & Deterministic Policy"]
+        CHAL --> VERIF[Deterministic Evidence Verifier: Grounding Ratio & Contradiction Veto]
+        ITEMS -.->|Grounding Truth| VERIF
+        VERIF --> POL[Deterministic Policy Engine: Visa CE 3.0 / MC FPT / RuPay]
+        POL --> EV[Expected Value Engine E[V]]
+        EV --> GATE[Deterministic Safety Gate]
+    end
     
-    AUTO --> AC[(Tamper-Evident SHA-256 Audit Chain)]
-    HITL --> AC
-    ACCEPT --> AC
+    GATE -->|Verified, CE3.0/FPT Compliant, E[V] > 0| AUTO[AUTO_DISPATCHED]
+    GATE -->|Gaps, Contradictions, or Overturned Claims| HITL[ROUTE_TO_HITL_QUEUE]
+    GATE -->|Negative E[V], Unprovable, or Missing Evidence| ACCEPT[AUTO_ACCEPT_OR_REFUND]
+    
+    AUTO --> PROV[(6-Tier Provenance DAG & Tamper-Evident Ledger)]
+    HITL --> PROV
+    ACCEPT --> PROV
 ```
 
 ---

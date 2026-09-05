@@ -226,6 +226,18 @@ async def get_dispute(dispute_id: str):
     raise HTTPException(status_code=404, detail="Dispute dossier not found")
 
 
+@app.get("/cases/{case_id}/provenance", tags=["Investigation Provenance"])
+@app.get("/api/v1/cases/{case_id}/provenance", tags=["Investigation Provenance"])
+async def get_case_provenance(case_id: str):
+    """
+    Returns the complete 6-tier Evidence -> Claim -> Challenge -> Verification -> Policy -> Decision
+    provenance DAG and tamper-evident audit event hash chain for a given case.
+    """
+    from app.api.v1.endpoints.provenance import build_provenance_payload
+    return build_provenance_payload(case_id)
+
+
+
 @app.post("/api/v1/disputes/{dispute_id}/remediate", response_model=Dossier, tags=["Disputes"])
 async def remediate_dispute_evidence(dispute_id: str, remediation: RemediationEvidencePayload):
     """

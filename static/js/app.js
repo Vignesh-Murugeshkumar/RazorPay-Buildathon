@@ -597,72 +597,127 @@ async function viewDossier(disputeId) {
             `;
         }
 
-        // AI Risk Investigation & Verifier Card
+        // 7-Stage Reasoning Chain (Evidence -> Claim -> Challenge -> Verification -> Policy -> Decision -> Provenance)
+        const challengesList = dossier.claim_challenges || [];
+        const verificationsList = dossier.claim_verifications || [];
+        const invDecision = dossier.investigation_decision || null;
+        const explainer = dossier.decision_explainer || null;
+
         const aiInvestigationHtml = `
+            <!-- 7-Stage Investigation Reasoning Chain: Evidence -> Claim -> Challenge -> Verification -> Policy -> Decision -->
             <div style="background: var(--surface-2); border-radius: var(--radius-md); padding: 18px; border: 1px solid var(--border-color); margin-bottom: 20px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-size: 16px;">🤖</span>
-                        <h4 style="font-size: 14px; font-weight: 700; color: #38bdf8; margin: 0;">AI Evidence Investigation &amp; Verifier Audit</h4>
+                        <span style="font-size: 16px;">🔬</span>
+                        <h4 style="font-size: 14px; font-weight: 700; color: #38bdf8; margin: 0;">Investigation Reasoning Chain: Evidence ➔ Claim ➔ Challenge ➔ Verification ➔ Policy ➔ Decision</h4>
                     </div>
                     <div style="display: flex; gap: 6px;">
-                        ${aiInv ? `<span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);">Advisor: ${aiInv.recommended_action}</span>` : ''}
-                        ${aiVerif ? `<span class="badge" style="background: ${aiVerif.passed ? 'rgba(16, 185, 129, 0.2)' : 'rgba(244, 63, 94, 0.2)'}; color: ${aiVerif.passed ? '#34d399' : '#fb7185'}; border: 1px solid ${aiVerif.passed ? 'rgba(16, 185, 129, 0.3)' : 'rgba(244, 63, 94, 0.3)'};">Verifier: ${aiVerif.passed ? 'PASSED (100% Grounded)' : 'REJECTED (Ungrounded/Contradicted)'}</span>` : ''}
+                        ${invDecision ? `<span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3);">Risk: ${invDecision.risk_level}</span>` : ''}
+                        ${aiVerif ? `<span class="badge" style="background: ${aiVerif.passed ? 'rgba(16, 185, 129, 0.2)' : 'rgba(244, 63, 94, 0.2)'}; color: ${aiVerif.passed ? '#34d399' : '#fb7185'}; border: 1px solid ${aiVerif.passed ? 'rgba(16, 185, 129, 0.3)' : 'rgba(244, 63, 94, 0.3)'};">Verifier: ${aiVerif.passed ? 'PASSED' : 'REJECTED / OVERTURNED'}</span>` : ''}
                     </div>
                 </div>
 
-                ${aiInv ? `
-                    <div style="margin-bottom: 12px;">
-                        <div style="font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">AI RISK ASSESSMENT:</div>
-                        <div style="background: rgba(0,0,0,0.25); border-radius: 6px; padding: 10px; font-size: 12px; color: var(--text-main); border-left: 3px solid #38bdf8;">
-                            ${aiInv.risk_assessment}
+                <!-- 1. Investigator Claims -->
+                ${aiInv && aiInv.claims && aiInv.claims.length > 0 ? `
+                    <div style="margin-bottom: 14px;">
+                        <div style="font-size: 11px; font-weight: 700; color: #38bdf8; margin-bottom: 6px;">1. INVESTIGATOR HYPOTHESES &amp; EVIDENCE-LINKED CLAIMS:</div>
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                            ${aiInv.claims.map(c => `
+                                <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; font-size: 11px; display: flex; justify-content: space-between; align-items: center;">
+                                    <div>
+                                        <span class="mono-text" style="color: #38bdf8; font-weight: 700; margin-right: 8px;">[${c.claim_id}]</span>
+                                        <span>${c.claim_text}</span>
+                                    </div>
+                                    <div style="display: flex; gap: 4px; flex-shrink: 0; margin-left: 10px;">
+                                        ${c.evidence_ids ? c.evidence_ids.map(eid => `<span class="prov-node-tag prov-tag-ev" style="font-size: 9px;">${eid}</span>`).join('') : ''}
+                                        <span class="badge" style="font-size: 9px; background: rgba(56, 189, 248, 0.15); color: #38bdf8;">Conf: ${c.confidence}%</span>
+                                    </div>
+                                </div>
+                            `).join('')}
                         </div>
                     </div>
-
-                    ${aiInv.claims && aiInv.claims.length > 0 ? `
-                        <div style="margin-bottom: 12px;">
-                            <div style="font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">GROUNDED FACTUAL CLAIMS:</div>
-                            <div style="display: flex; flex-direction: column; gap: 6px;">
-                                ${aiInv.claims.map(c => `
-                                    <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; font-size: 11px; display: flex; justify-content: space-between; align-items: center;">
-                                        <div>
-                                            <span class="mono-text" style="color: #38bdf8; font-weight: 700; margin-right: 8px;">[${c.claim_id}]</span>
-                                            <span>${c.claim_text}</span>
-                                        </div>
-                                        <div style="display: flex; gap: 4px; flex-shrink: 0; margin-left: 10px;">
-                                            ${c.evidence_ids ? c.evidence_ids.map(eid => `<span class="prov-node-tag prov-tag-ev" style="font-size: 9px;">${eid}</span>`).join('') : ''}
-                                            ${c.policy_document_id ? `<span class="badge badge-visa" style="font-size: 9px;">${c.policy_document_id}</span>` : ''}
-                                        </div>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        </div>
-                    ` : ''}
-
-                    ${aiInv.policy_citations && aiInv.policy_citations.length > 0 ? `
-                        <div style="margin-bottom: 12px;">
-                            <div style="font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">RETRIEVED LOCAL POLICY CITATIONS:</div>
-                            <div style="display: flex; flex-wrap: wrap; gap: 6px;">
-                                ${aiInv.policy_citations.map(cit => `<span class="factor-pill-pos" style="font-size: 10px;">📜 ${cit}</span>`).join('')}
-                            </div>
-                        </div>
-                    ` : ''}
                 ` : ''}
 
-                ${dossier.safety_gate ? `
-                    <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 12px; margin-top: 10px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                            <span style="font-size: 11px; font-weight: 700; color: var(--accent-amber);">DETERMINISTIC SAFETY GATE AUDIT</span>
-                            <span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; font-size: 10px;">Rule: ${dossier.safety_gate.primary_policy_rule}</span>
+                <!-- 2. Adversarial Challenger -->
+                ${challengesList.length > 0 ? `
+                    <div style="margin-bottom: 14px;">
+                        <div style="font-size: 11px; font-weight: 700; color: #f43f5e; margin-bottom: 6px;">2. ADVERSARIAL CHALLENGER (Attempting Disproof &amp; Contrary Evidence):</div>
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                            ${challengesList.map(ch => {
+                                const isOverturned = ch.challenge_result === 'overturned';
+                                const isWeakened = ch.challenge_result === 'weakened';
+                                const color = isOverturned ? '#fb7185' : (isWeakened ? '#fbbf24' : '#34d399');
+                                const bg = isOverturned ? 'rgba(244, 63, 94, 0.15)' : (isWeakened ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.1)');
+                                return `
+                                    <div style="background: ${bg}; border: 1px solid ${color}40; border-radius: 6px; padding: 8px 10px; font-size: 11px;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                            <span style="font-weight: 700; color: ${color};">
+                                                ${isOverturned ? '🛑 CLAIM OVERTURNED' : (isWeakened ? '⚠️ CLAIM WEAKENED' : '✅ CLAIM SUSTAINED')}: [${ch.claim_id}]
+                                            </span>
+                                            <span class="badge" style="font-size: 9px; background: ${bg}; color: ${color};">Disproof Strength: ${(ch.challenge_strength * 100).toFixed(0)}%</span>
+                                        </div>
+                                        <div style="color: var(--text-main); margin-bottom: 4px;">
+                                            <strong>Challenge:</strong> ${ch.challenge}
+                                        </div>
+                                        <div style="color: var(--text-muted); font-size: 10px;">
+                                            <strong>Alternative Explanation:</strong> ${ch.alternative_explanation}
+                                        </div>
+                                        ${ch.contrary_evidence_ids && ch.contrary_evidence_ids.length > 0 ? `
+                                            <div style="margin-top: 4px; display: flex; gap: 4px; align-items: center;">
+                                                <span style="font-size: 10px; color: #fb7185; font-weight: 600;">Contrary Evidence Found:</span>
+                                                ${ch.contrary_evidence_ids.map(ceid => `<span class="prov-node-tag" style="background: rgba(244,63,94,0.2); color: #fb7185; font-size: 9px;">${ceid}</span>`).join('')}
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                `;
+                            }).join('')}
                         </div>
-                        <div style="font-size: 11px; color: #cbd5e1; margin-bottom: 6px;">
-                            ${dossier.safety_gate.decision_explanation}
+                    </div>
+                ` : ''}
+
+                <!-- 3. Independent Verifier -->
+                ${verificationsList.length > 0 ? `
+                    <div style="margin-bottom: 14px;">
+                        <div style="font-size: 11px; font-weight: 700; color: #34d399; margin-bottom: 6px;">3. INDEPENDENT VERIFIER (Deterministic Grounding &amp; Contradiction Veto):</div>
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                            ${verificationsList.map(vf => {
+                                const isSupported = vf.verification_status === 'supported';
+                                const isPart = vf.verification_status === 'partially_supported';
+                                const stColor = isSupported ? '#34d399' : (isPart ? '#fbbf24' : '#fb7185');
+                                return `
+                                    <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; font-size: 11px; display: flex; justify-content: space-between; align-items: center;">
+                                        <div>
+                                            <span class="mono-text" style="color: var(--accent-cyan); font-weight: 700; margin-right: 6px;">[${vf.claim_id}]</span>
+                                            <span style="color: ${stColor}; font-weight: 600; text-transform: uppercase;">${vf.verification_status}</span>
+                                            ${vf.unsupported_reason ? `<span style="color: var(--text-muted); margin-left: 8px;">— ${vf.unsupported_reason}</span>` : ''}
+                                        </div>
+                                        <div style="display: flex; gap: 4px; align-items: center;">
+                                            <span style="font-size: 10px; color: var(--text-subtle);">Verified Conf:</span>
+                                            <span class="mono-text" style="font-weight: 700; color: ${stColor};">${(vf.verified_confidence * 100).toFixed(0)}%</span>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
                         </div>
-                        ${dossier.safety_gate.gate_reasons && dossier.safety_gate.gate_reasons.length > 0 ? `
-                            <ul style="margin: 4px 0 0 16px; padding: 0; font-size: 10px; color: var(--text-muted);">
-                                ${dossier.safety_gate.gate_reasons.map(r => `<li>${r}</li>`).join('')}
-                            </ul>
-                        ` : ''}
+                    </div>
+                ` : ''}
+
+                <!-- 4. Deterministic Decision Explainer (Finding, Evidence, Counter-Evidence, Verification, Policy, Uncertainty, Decision) -->
+                ${explainer ? `
+                    <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 14px; margin-top: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <span style="font-size: 12px; font-weight: 700; color: var(--accent-cyan);">💡 7-PART DETERMINISTIC DECISION EXPLAINER</span>
+                            <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 10px;">Auditable Narrative</span>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 8px; font-size: 11px; line-height: 1.4;">
+                            <div><strong style="color: #38bdf8;">Finding:</strong> <span style="color: #e2e8f0;">${explainer.finding}</span></div>
+                            <div><strong style="color: #34d399;">Evidence:</strong> <span style="color: #cbd5e1;">${explainer.evidence.join('; ')}</span></div>
+                            <div><strong style="color: #fb7185;">Counter-Evidence:</strong> <span style="color: #cbd5e1;">${explainer.counter_evidence.join('; ')}</span></div>
+                            <div><strong style="color: #a78bfa;">Verification:</strong> <span style="color: #cbd5e1;">${explainer.verification}</span></div>
+                            <div><strong style="color: #fbbf24;">Policy:</strong> <span style="color: #cbd5e1;">${explainer.policy}</span></div>
+                            <div><strong style="color: #94a3b8;">Uncertainty:</strong> <span style="color: #cbd5e1;">${explainer.uncertainty}</span></div>
+                            <div><strong style="color: #6ee7b7;">Decision:</strong> <span style="color: #f8fafc; font-weight: 600;">${explainer.decision}</span></div>
+                        </div>
                     </div>
                 ` : ''}
             </div>
@@ -1164,6 +1219,59 @@ async function runSimulation(type) {
             },
             carrier_proof: null,
             historical_transactions: []
+        };
+    } else if (type === 'hero_challenger_disprove') {
+        // Hero Demo: Investigator hypothesizes physical delivery verified,
+        // but Challenger finds GPS coordinates are 150m outside shipping address perimeter.
+        // Verifier overturns the claim and downgrades confidence -> routes to HITL.
+        payload = {
+            event: "payment.dispute.created",
+            dispute_id: `disp_hero_challenger_${now % 10000}`,
+            payment_id: `pay_hero_${now % 10000}`,
+            amount_inr: 8500.0,
+            card_network: "visa",
+            reason_code: "10.4",
+            service_type: "physical_goods",
+            telemetry: {
+                ip_address: "49.207.180.45",
+                device_id: "dev_macbook_hero_01",
+                user_id: "user_vignesh_hero",
+                shipping_address: "Flat 402, Embassy Palms, Indiranagar, Bangalore",
+                mfa_authenticated: true
+            },
+            carrier_proof: {
+                carrier_name: "BlueDart Express",
+                tracking_number: `BD-HERO-${now % 10000}`,
+                delivered_status: true,
+                recipient_signature_present: true,
+                verified_gps: false, // Challenger discovers GPS mismatch (>50m)
+                gps_latitude: 12.9780,
+                gps_longitude: 77.6450
+            },
+            historical_transactions: [
+                {
+                    transaction_id: "tx_hero_h1",
+                    payment_id: "pay_hero_h1",
+                    amount_inr: 8500.0,
+                    days_ago: 140,
+                    card_last4: "4242",
+                    card_network: "visa",
+                    ip_address: "49.207.180.45",
+                    device_id: "dev_macbook_hero_01",
+                    undisputed: true
+                },
+                {
+                    transaction_id: "tx_hero_h2",
+                    payment_id: "pay_hero_h2",
+                    amount_inr: 8500.0,
+                    days_ago: 230,
+                    card_last4: "4242",
+                    card_network: "visa",
+                    ip_address: "49.207.180.45",
+                    device_id: "dev_macbook_hero_01",
+                    undisputed: true
+                }
+            ]
         };
     } else if (type === 'adversarial_injection') {
         // Adversarial prompt injection in user agent attempting to bypass rules

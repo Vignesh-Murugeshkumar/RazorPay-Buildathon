@@ -7,7 +7,12 @@ from app.schemas.dispute import (
     Dossier,
     EvidenceStatus,
     EvidenceItem,
-    EvidenceContradiction
+    EvidenceContradiction,
+    InvestigationClaim,
+    ClaimChallenge,
+    ClaimVerificationResult,
+    InvestigationDecision,
+    DecisionExplainer
 )
 from app.rules.card_rules import evaluate_dispute_compliance
 from app.rules.service_disputes import evaluate_service_dispute_compliance
@@ -25,6 +30,7 @@ from app.services.ledger import ledger
 from app.core.db import db
 from app.core.security import compute_sha256_hash
 from app.ai.investigation_agent import investigation_agent
+from app.ai.challenger import claim_challenger
 from app.ai.verifier import ai_verifier, VerificationResult
 from app.ai.prompts import DisputeInvestigationReport
 from app.rules.safety_gate import safety_gate, SafetyGateDecision
@@ -46,6 +52,8 @@ class DisputeState(TypedDict, total=False):
     ai_investigation: Optional[DisputeInvestigationReport]
     ai_report_hash: Optional[str]
     policy_excerpts: Optional[List[Any]]
+    challenges: Optional[List[ClaimChallenge]]
+    claim_challenges: Optional[List[ClaimChallenge]]
     ai_verification: Optional[VerificationResult]
     safety_gate: Optional[SafetyGateDecision]
 
@@ -193,16 +201,71 @@ def ai_investigation_agent_node(state: DisputeState) -> DisputeState:
     }
 
 
+def claim_challenger_agent_node(state: DisputeState) -> DisputeState:
+    """
+    Adversarial Claim Challenger Node:
+    For every claim asserted during AI investigation, attempts to disprove it.
+    Actively identifies contrary evidence, missing evidence, and alternative non-fraud narratives.
+    """
+    payload = state["payload"]
+    dispute_id = state["dispute_id"]
+    report = state.get("ai_investigation")
+    items, contradictions, _ = extract_evidence_and_contradictions(payload)
+
+    claims = report.claims if report else []
+    challenges = claim_challenger.challenge_claims(
+        claims=claims,
+        evidence_items=items,
+        contradictions=contradictions,
+        dispute_metadata={"reason_code": payload.reason_code, "card_network": payload.card_network}
+    )
+
+    overturned_count = sum(1 for c in challenges if c.challenge_result == "overturned")
+    weakened_count = sum(1 for c in challenges if c.challenge_result == "weakened")
+
+    ledger.append_block(
+        agent_id="AGENT_CLAIM_CHALLENGER",
+        state_transition="CLAIMS_CHALLENGED",
+        payload={
+            "dispute_id": dispute_id,
+            "total_claims": len(claims),
+            "overturned_count": overturned_count,
+            "weakened_count": weakened_count,
+            "challenges": [c.model_dump() for c in challenges]
+        }
+    )
+
+    db.add_timeline_event(
+        dispute_id=dispute_id,
+        event_type="CLAIM_CHALLENGE",
+        title="Adversarial Claim Challenge Completed",
+        description=f"Challenged {len(claims)} claim(s): {overturned_count} overturned, {weakened_count} weakened.",
+        metadata={"overturned_count": overturned_count, "weakened_count": weakened_count}
+    )
+
+    logs = state.get("logs", [])
+    logs.append(f"Claim Challenger: {len(claims)} challenged, {overturned_count} overturned, {weakened_count} weakened")
+
+    return {
+        **state,
+        "challenges": challenges,
+        "claim_challenges": challenges,
+        "logs": logs
+    }
+
+
 def ai_verifier_agent_node(state: DisputeState) -> DisputeState:
     """
     AI Evidence Verifier Node:
     Independently verifies that every claim asserted by the AI has supporting Evidence IDs,
     that all cited evidence actually exists and is verified, and that contradictions are respected.
+    Integrates adversarial challenge findings to overturn ungrounded claims.
     """
     payload = state["payload"]
     dispute_id = state["dispute_id"]
     report = state.get("ai_investigation")
     policy_excerpts = state.get("policy_excerpts", [])
+    challenges = state.get("challenges", [])
     items, contradictions, _ = extract_evidence_and_contradictions(payload)
 
     if report:
@@ -210,7 +273,8 @@ def ai_verifier_agent_node(state: DisputeState) -> DisputeState:
             report=report,
             evidence_items=items,
             contradictions=contradictions,
-            policy_excerpts=policy_excerpts
+            policy_excerpts=policy_excerpts,
+            challenges=challenges
         )
     else:
         from app.ai.verifier import VerificationResult
@@ -704,7 +768,22 @@ def _create_dossier(state: DisputeState, decision: str, summary: str, sealed_has
         priority_factors=priority_factors,
         ai_investigation=ai_report.model_dump() if ai_report else None,
         ai_verification=verification.model_dump() if verification else None,
-        safety_gate=gate_decision.model_dump() if gate_decision else None
+        safety_gate=gate_decision.model_dump() if gate_decision else None,
+        # Evidence-Grounded Investigation Pipeline Artifacts
+        investigation_claims=[
+            InvestigationClaim(
+                claim_id=c.claim_id,
+                claim=c.claim,
+                evidence_ids=c.evidence_ids,
+                confidence=float(c.confidence) / 100.0 if c.confidence > 1.0 else float(c.confidence),
+                claim_type="delivery_fulfillment" if any("delivery" in str(e).lower() or "carrier" in str(e).lower() for e in c.evidence_ids) else "behavioral_anomaly"
+            )
+            for c in (ai_report.claims if ai_report else [])
+        ],
+        claim_challenges=state.get("challenges") or [],
+        claim_verifications=verification.claim_verifications if verification else [],
+        investigation_decision=gate_decision.investigation_decision if gate_decision else None,
+        decision_explainer=gate_decision.explainer if gate_decision else None
     )
 
 
@@ -1067,11 +1146,12 @@ def execute_dispute_workflow(
                 s8 = hitl_queue_agent_node(s6)
             return s8["dossier"]
 
-        # MODE 3: SENTINEL (Production default: AI + Self-Challenge + Verifier + Rules + E[V] + Deterministic Safety Gate)
+        # MODE 3: SENTINEL (Production default: AI + Challenger + Verifier + Rules + E[V] + Deterministic Safety Gate)
         s1 = triage_agent_node(initial_state)
         s2 = aggregator_agent_node(s1)
         s3 = ai_investigation_agent_node(s2)
-        s4 = ai_verifier_agent_node(s3)
+        s3_chal = claim_challenger_agent_node(s3)
+        s4 = ai_verifier_agent_node(s3_chal)
         s5 = compliance_agent_node(s4)
         s6 = economic_engine_agent_node(s5)
         s7 = safety_gate_agent_node(s6)
@@ -1082,8 +1162,13 @@ def execute_dispute_workflow(
             s8 = auto_accept_agent_node(s7)
         else:
             s8 = hitl_queue_agent_node(s7)
-
-        return s8["dossier"]
+        dossier = s8["dossier"]
+        try:
+            from app.api.v1.endpoints.webhooks import get_dossiers_db
+            get_dossiers_db()[dossier.dispute_id] = dossier
+        except Exception:
+            pass
+        return dossier
 
     except Exception as exc:
         return _build_failure_fallback_dossier(payload, exc)

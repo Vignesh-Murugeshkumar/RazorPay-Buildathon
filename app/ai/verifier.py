@@ -20,7 +20,13 @@ Architectural Trust Hierarchy:
 
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
-from app.schemas.dispute import EvidenceItem, EvidenceStatus, EvidenceContradiction
+from app.schemas.dispute import (
+    EvidenceItem,
+    EvidenceStatus,
+    EvidenceContradiction,
+    ClaimVerificationResult,
+    ClaimChallenge
+)
 from app.ai.prompts import DisputeInvestigationReport, AIClaimItem
 from app.ai.policy_kb import PolicyExcerpt
 from app.core.logger import get_logger
@@ -39,6 +45,10 @@ class VerificationResult(BaseModel):
     fabricated_policy_citations: List[str] = Field(default_factory=list, description="Policy citations not retrieved in session")
     rejection_reasons: List[str] = Field(default_factory=list, description="Specific safety violations blocking automation")
     audit_summary: str = Field(..., description="Explainable audit statement")
+    
+    # Granular Independent Claim Verifications
+    claim_verifications: List[ClaimVerificationResult] = Field(default_factory=list, description="Independent verification results per claim")
+    overturned_claims: List[str] = Field(default_factory=list, description="Claims overturned by adversarial challenge")
 
 
 class DeterministicEvidenceVerifier:
@@ -63,13 +73,16 @@ class DeterministicEvidenceVerifier:
         report: DisputeInvestigationReport,
         evidence_items: List[EvidenceItem],
         contradictions: List[EvidenceContradiction],
-        policy_excerpts: Optional[List[PolicyExcerpt]] = None
+        policy_excerpts: Optional[List[PolicyExcerpt]] = None,
+        challenges: Optional[List[ClaimChallenge]] = None
     ) -> VerificationResult:
         rejection_reasons: List[str] = []
         hallucinated_ids: List[str] = []
         contradicted_cites: List[str] = []
         unsupported: List[str] = []
         fabricated_policies: List[str] = []
+        claim_verifications: List[ClaimVerificationResult] = []
+        overturned_claims: List[str] = []
 
         item_map = {item.evidence_id: item for item in evidence_items}
         valid_ev_ids = set(item_map.keys())
@@ -77,6 +90,10 @@ class DeterministicEvidenceVerifier:
         conflicted_ev_ids = set()
         for c in contradictions:
             conflicted_ev_ids.update(c.evidence_ids)
+
+        challenge_by_cid: Dict[str, ClaimChallenge] = {
+            c.claim_id: c for c in (challenges or [])
+        }
 
         retrieved_ret_ids = set()
         retrieved_doc_ids = set()
@@ -97,28 +114,76 @@ class DeterministicEvidenceVerifier:
                     contradicted_cites.append(ev_id)
                     rejection_reasons.append(f"AI cited {ev_id} as supporting evidence despite unresolved contradiction")
 
-        # 2. Verify individual claims grounding
+        # 2. Verify individual claims grounding & Challenger Outcomes
         grounded_count = 0
         total_count = len(report.claims)
 
         for claim in report.claims:
             is_claim_grounded = True
+            initial_conf = float(claim.confidence) / 100.0 if claim.confidence > 1.0 else float(claim.confidence)
+            supp_ev = [ev_id for ev_id in claim.evidence_ids if ev_id in valid_ev_ids and item_map[ev_id].status in (EvidenceStatus.VERIFIED, EvidenceStatus.PARTIALLY_VERIFIED)]
+            contra_ev = [ev_id for ev_id in claim.evidence_ids if ev_id in conflicted_ev_ids]
 
-            if not claim.evidence_ids:
+            chal = challenge_by_cid.get(claim.claim_id)
+            if chal:
+                for ce in chal.contrary_evidence_ids:
+                    if ce not in contra_ev:
+                        contra_ev.append(ce)
+
+            # Check if Challenger overturned claim
+            if chal and chal.challenge_result == "overturned":
+                v_status = "contradicted"
+                v_conf = 0.0
+                unsupported_reason = f"Challenger overturned claim: {chal.alternative_explanation}"
+                is_claim_grounded = False
+                overturned_claims.append(claim.claim_id)
+                rejection_reasons.append(f"Claim {claim.claim_id} overturned by challenger: {chal.challenge}")
+                if claim.claim_text not in unsupported:
+                    unsupported.append(f"{claim.claim_id}: {claim.claim_text} (Overturned by challenger)")
+            elif contra_ev:
+                v_status = "contradicted"
+                v_conf = 0.0
+                unsupported_reason = f"Evidence {contra_ev} has unresolved contradictions"
+                is_claim_grounded = False
+                contradicted_cites.extend(contra_ev)
+            elif not claim.evidence_ids:
+                v_status = "unsupported"
+                v_conf = 0.0
+                unsupported_reason = "No evidence citations provided"
                 unsupported.append(f"{claim.claim_id}: {claim.claim_text} (No evidence cited)")
                 is_claim_grounded = False
             else:
+                has_hallucination = False
+                has_unverified = False
                 for ev_id in claim.evidence_ids:
                     if ev_id not in valid_ev_ids:
                         hallucinated_ids.append(ev_id)
+                        has_hallucination = True
                         is_claim_grounded = False
                     else:
                         item = item_map[ev_id]
                         if item.status not in (EvidenceStatus.VERIFIED, EvidenceStatus.PARTIALLY_VERIFIED):
+                            has_unverified = True
                             is_claim_grounded = False
-                        if ev_id in conflicted_ev_ids:
-                            contradicted_cites.append(ev_id)
-                            is_claim_grounded = False
+
+                if has_hallucination:
+                    v_status = "unsupported"
+                    v_conf = 0.0
+                    unsupported_reason = "Claim references nonexistent evidence IDs"
+                elif has_unverified:
+                    v_status = "unsupported"
+                    v_conf = 0.0
+                    unsupported_reason = "Claim references missing or unverified evidence"
+                elif (chal and chal.challenge_result == "weakened") or any(item_map[e].status == EvidenceStatus.PARTIALLY_VERIFIED for e in claim.evidence_ids):
+                    v_status = "partially_supported"
+                    v_conf = min(0.65, round(initial_conf * 0.7, 2))
+                    unsupported_reason = chal.challenge if chal else "Evidence only partially verified"
+                    grounded_count += 1
+                else:
+                    v_status = "supported"
+                    v_conf = round(initial_conf, 2)
+                    unsupported_reason = None
+                    grounded_count += 1
 
             # Check policy document citation validity and retrieval provenance
             if claim.policy_document_id:
@@ -131,11 +196,17 @@ class DeterministicEvidenceVerifier:
                     fabricated_policies.append(claim.policy_document_id)
                     is_claim_grounded = False
 
-            if is_claim_grounded:
-                grounded_count += 1
-            else:
-                if claim.claim_text not in [u.split(": ", 1)[-1].split(" (")[0] for u in unsupported]:
-                    unsupported.append(f"{claim.claim_id}: {claim.claim_text}")
+            if not is_claim_grounded and claim.claim_text not in [u.split(": ", 1)[-1].split(" (")[0] for u in unsupported]:
+                unsupported.append(f"{claim.claim_id}: {claim.claim_text}")
+
+            claim_verifications.append(ClaimVerificationResult(
+                claim_id=claim.claim_id,
+                verification_status=v_status,
+                supporting_evidence=supp_ev,
+                contradicting_evidence=contra_ev,
+                unsupported_reason=unsupported_reason,
+                verified_confidence=v_conf
+            ))
 
         # 3. Verify Policy Analysis Provenance
         for pa in report.policy_analysis:
@@ -190,7 +261,13 @@ class DeterministicEvidenceVerifier:
 
         # Compute grounding ratio
         grounding_ratio = (grounded_count / total_count) if total_count > 0 else (1.0 if not unsupported else 0.0)
-        passed = (len(rejection_reasons) == 0) and (len(unsupported) == 0) and (len(hallucinated_ids) == 0) and (len(fabricated_policies) == 0)
+        passed = (
+            (len(rejection_reasons) == 0) and
+            (len(unsupported) == 0) and
+            (len(hallucinated_ids) == 0) and
+            (len(fabricated_policies) == 0) and
+            (len(overturned_claims) == 0)
+        )
 
         # Audit summary statement
         if passed:
@@ -202,14 +279,16 @@ class DeterministicEvidenceVerifier:
             audit_summary = (
                 f"VERIFIER_FAILED: Rejected {len(rejection_reasons)} violation(s). "
                 f"Unsupported claims: {len(unsupported)}, Hallucinated IDs: {len(hallucinated_ids)}, "
-                f"Contradicted citations: {len(contradicted_cites)}, Fabricated policies: {len(fabricated_policies)}. Autonomous action strictly blocked."
+                f"Contradicted citations: {len(contradicted_cites)}, Fabricated policies: {len(fabricated_policies)}, "
+                f"Overturned claims: {len(overturned_claims)}. Autonomous action strictly blocked."
             )
 
         logger.info(
             "Deterministic evidence verification evaluated",
             passed=passed,
             grounded_claims_ratio=round(grounding_ratio, 2),
-            rejection_count=len(rejection_reasons)
+            rejection_count=len(rejection_reasons),
+            overturned_count=len(overturned_claims)
         )
 
         return VerificationResult(
@@ -222,7 +301,9 @@ class DeterministicEvidenceVerifier:
             contradicted_citations=list(set(contradicted_cites)),
             fabricated_policy_citations=list(set(fabricated_policies)),
             rejection_reasons=rejection_reasons,
-            audit_summary=audit_summary
+            audit_summary=audit_summary,
+            claim_verifications=claim_verifications,
+            overturned_claims=overturned_claims
         )
 
 

@@ -8,7 +8,13 @@ Enforces that the LLM is strictly advisory and NEVER authorized to move money or
 
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
-from app.schemas.dispute import RuleEvaluationResult, EvidenceContradiction
+from app.schemas.dispute import (
+    RuleEvaluationResult,
+    EvidenceContradiction,
+    InvestigationDecision,
+    DecisionExplainer,
+    RiskLevel
+)
 from app.ai.prompts import DisputeInvestigationReport
 from app.ai.verifier import VerificationResult
 from app.services.expected_value import ExpectedValueResult
@@ -29,6 +35,10 @@ class SafetyGateDecision(BaseModel):
     blocking_factors: List[str] = Field(default_factory=list, description="Specific safety factors blocking automation")
     missing_requirements: List[str] = Field(default_factory=list, description="Evidence gaps preventing representment")
     recommended_human_action: str = Field(default="", description="Prescriptive instructions for human reviewer")
+    
+    # Grounded Investigation Decision & Explainer
+    investigation_decision: Optional[InvestigationDecision] = None
+    explainer: Optional[DecisionExplainer] = None
 
 
 class DeterministicSafetyGate:
@@ -80,7 +90,7 @@ class DeterministicSafetyGate:
             ] + verification.rejection_reasons
             blocking_factors.extend(verification.rejection_reasons)
             rec_action = f"Human action required: Resolve AI verification violations: {'; '.join(verification.rejection_reasons[:2])}."
-            return SafetyGateDecision(
+            res = SafetyGateDecision(
                 final_decision="HITL_REVIEW",
                 allowed_auto_dispatch=False,
                 gate_reasons=reasons,
@@ -96,6 +106,7 @@ class DeterministicSafetyGate:
                 missing_requirements=missing_requirements,
                 recommended_human_action=rec_action
             )
+            return self._enrich_decision(res, ai_report, verification, rule_result, ev_result, contradictions, confidence_score)
 
         # HARD RULE 2: Objective Factual Contradictions -> Strict Block to HITL
         if len(contradictions) > 0:
@@ -106,7 +117,7 @@ class DeterministicSafetyGate:
             for c in contradictions:
                 blocking_factors.append(f"Contradiction: {c.description}")
             rec_action = f"Human action required: Reconcile evidence contradiction before filing: {contradictions[0].description}."
-            return SafetyGateDecision(
+            res = SafetyGateDecision(
                 final_decision="HITL_REVIEW",
                 allowed_auto_dispatch=False,
                 gate_reasons=c_reasons,
@@ -122,6 +133,7 @@ class DeterministicSafetyGate:
                 missing_requirements=missing_requirements,
                 recommended_human_action=rec_action
             )
+            return self._enrich_decision(res, ai_report, verification, rule_result, ev_result, contradictions, confidence_score)
 
         # HARD RULE 3: Negative Expected Value -> Auto-Accept Loss to Prevent Arbitration Penalty
         if ev_inr <= 0.0 and p_win < 0.40:
@@ -131,7 +143,7 @@ class DeterministicSafetyGate:
             ]
             alignment = "AGREED" if ai_action in ("ACCEPT", "ACCEPT_LOSS") else "OVERRIDDEN_FOR_SAFETY"
             blocking_factors.append(f"Negative Expected Value (E[V] = INR {ev_inr:,.2f})")
-            return SafetyGateDecision(
+            res = SafetyGateDecision(
                 final_decision="ACCEPT_LOSS",
                 allowed_auto_dispatch=False,
                 gate_reasons=ev_reasons,
@@ -147,6 +159,7 @@ class DeterministicSafetyGate:
                 missing_requirements=missing_requirements,
                 recommended_human_action="No representment required. Chargeback liability accepted to prevent fees."
             )
+            return self._enrich_decision(res, ai_report, verification, rule_result, ev_result, contradictions, confidence_score)
 
         # HARD RULE 4: Autonomous Representment Qualification
         # Must have:
@@ -169,7 +182,7 @@ class DeterministicSafetyGate:
                 f"rules, positive expected value (+₹{ev_inr:,.2f}), win probability {p_win*100:.1f}% >= 70%, "
                 f"confidence score {confidence_score:.1f} >= 85.0, and AI reasoning confidence {ai_conf}% >= 70%."
             ]
-            return SafetyGateDecision(
+            res = SafetyGateDecision(
                 final_decision="AUTO_REPRESENT",
                 allowed_auto_dispatch=True,
                 gate_reasons=dispatch_reasons,
@@ -185,6 +198,7 @@ class DeterministicSafetyGate:
                 missing_requirements=[],
                 recommended_human_action="Automated package generated and submitted to payment network gateway."
             )
+            return self._enrich_decision(res, ai_report, verification, rule_result, ev_result, contradictions, confidence_score)
 
         # Default fallback: Moderate risk / partial evidence -> HITL Review
         hitl_reasons = []
@@ -205,7 +219,7 @@ class DeterministicSafetyGate:
             f"Human action required: Review case evidentiary support ({'; '.join(hitl_reasons[:2])})."
         )
 
-        return SafetyGateDecision(
+        res = SafetyGateDecision(
             final_decision="HITL_REVIEW",
             allowed_auto_dispatch=False,
             gate_reasons=hitl_reasons or ["Moderate evidentiary support requires human review"],
@@ -221,8 +235,138 @@ class DeterministicSafetyGate:
             missing_requirements=missing_requirements,
             recommended_human_action=rec_guidance
         )
+        return self._enrich_decision(res, ai_report, verification, rule_result, ev_result, contradictions, confidence_score)
+
+    def _enrich_decision(
+        self,
+        decision: SafetyGateDecision,
+        ai_report: DisputeInvestigationReport,
+        verification: VerificationResult,
+        rule_result: RuleEvaluationResult,
+        ev_result: ExpectedValueResult,
+        contradictions: List[EvidenceContradiction],
+        confidence_score: float
+    ) -> SafetyGateDecision:
+        """
+        Enriches deterministic safety gate decision with structured InvestigationDecision
+        and 7-part DecisionExplainer (Finding, Evidence, Counter-evidence, Verification, Policy, Uncertainty, Decision).
+        """
+        verified_claims = [
+            c.claim_id for c in getattr(verification, "claim_verifications", [])
+            if c.verification_status in ("supported", "partially_supported")
+        ]
+        contradicting_claims = [
+            c.claim_id for c in getattr(verification, "claim_verifications", [])
+            if c.verification_status == "contradicted"
+        ]
+
+        # Explicit INSUFFICIENT_EVIDENCE detection
+        has_fulfillment = bool(rule_result.carrier_verified or rule_result.digital_verified)
+        is_insufficient = (
+            (rule_result.qualifying_orders_count == 0 and not has_fulfillment and not rule_result.mfa_verified) or
+            (getattr(ai_report, "case_assessment", "") == "INSUFFICIENT_EVIDENCE")
+        )
+
+        # Risk Level Taxonomy
+        if is_insufficient:
+            risk_level = RiskLevel.INSUFFICIENT_EVIDENCE.value
+        elif len(contradictions) > 0 or len(contradicting_claims) > 0:
+            risk_level = RiskLevel.CONFIRMED_RISK.value
+        elif not verification.passed:
+            risk_level = RiskLevel.UNCERTAIN.value
+        elif decision.final_decision == "AUTO_REPRESENT":
+            risk_level = RiskLevel.LIKELY_LEGITIMATE.value
+        elif ev_result.estimated_win_probability < 0.35:
+            risk_level = RiskLevel.LIKELY_RISK.value
+        else:
+            risk_level = RiskLevel.UNCERTAIN.value
+
+        # Applicable Policy IDs
+        pids = []
+        if rule_result.ce30_compliant:
+            pids.append("POL-VISA-CE30")
+        elif rule_result.fpt_compliant:
+            pids.append("POL-MC-FPT")
+        else:
+            pids.append(f"POL-{rule_result.network.upper()}-STANDARDS")
+
+        if rule_result.mfa_verified:
+            pids.append("POL-3DS-SHIFT")
+        if rule_result.carrier_verified:
+            pids.append("POL-CARRIER-POD")
+        if rule_result.digital_verified:
+            pids.append("POL-DIGITAL-GOODS")
+        if contradictions:
+            pids.append("POL-EVIDENCE-INTEGRITY")
+        if not verification.passed:
+            pids.append("POL-VERIFIER-INTEGRITY")
+        if ev_result.expected_value_inr <= 0.0:
+            pids.append("POL-FINANCIAL-EV")
+
+        # Evidence & Counter-evidence lists
+        ev_points = []
+        if rule_result.carrier_verified:
+            ev_points.append("Physical delivery verified with carrier POD and tracking")
+        if rule_result.digital_verified:
+            ev_points.append("Digital server access logs verified for active user account")
+        if rule_result.gps_verified:
+            ev_points.append("Carrier GPS confirmed within 50m delivery perimeter")
+        if rule_result.mfa_verified:
+            ev_points.append("3DS / MFA two-factor authentication verified")
+        if rule_result.qualifying_orders_count > 0:
+            ev_points.append(f"{rule_result.qualifying_orders_count} qualifying undisputed historical orders in core ledger")
+        if not ev_points:
+            ev_points.append("No verified fulfillment or historical evidence found")
+
+        counter_points = [c.description for c in contradictions]
+        for c in getattr(verification, "claim_verifications", []):
+            if c.verification_status == "contradicted" and c.unsupported_reason:
+                counter_points.append(f"Claim {c.claim_id}: {c.unsupported_reason}")
+
+        # 7-Part Decision Explainer
+        explainer = DecisionExplainer(
+            finding=(
+                f"Dispute assessment: {risk_level}. "
+                f"{decision.decision_explanation}"
+            ),
+            evidence=ev_points,
+            counter_evidence=counter_points or ["No counter-evidence or contradictions discovered"],
+            verification=(
+                f"Independent verifier: {verification.grounded_claims}/{verification.total_claims} claims grounded. "
+                f"Status: {'PASSED' if verification.passed else 'FAILED'}."
+            ),
+            policy=f"Evaluated policy rules: {', '.join(pids)} (primary: {decision.primary_policy_rule}).",
+            uncertainty=(
+                f"Evidence gaps: {'; '.join(decision.missing_requirements)}"
+                if decision.missing_requirements else "No material uncertainty identified"
+            ),
+            decision=(
+                f"Action: {decision.final_decision}. "
+                f"{decision.recommended_human_action}"
+            )
+        )
+
+        investigation_decision = InvestigationDecision(
+            decision=decision.final_decision,
+            risk_level=risk_level,
+            confidence=min(1.0, max(0.0, round(confidence_score / 100.0, 2))),
+            verified_claims=verified_claims,
+            contradicting_claims=contradicting_claims,
+            policy_ids=pids,
+            required_actions=decision.blocking_factors or ([decision.recommended_human_action] if decision.recommended_human_action else []),
+            insufficient_evidence=is_insufficient,
+            explainer=explainer
+        )
+
+        decision.investigation_decision = investigation_decision
+        decision.explainer = explainer
+        return decision
 
     evaluate = evaluate_gate
 
 
-safety_gate = DeterministicSafetyGate()
+# Deterministic Policy Engine Canonical Export
+DeterministicPolicyEngine = DeterministicSafetyGate
+policy_engine = DeterministicSafetyGate()
+safety_gate = policy_engine
+
