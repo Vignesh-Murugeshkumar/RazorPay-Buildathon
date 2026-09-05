@@ -92,7 +92,8 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={
             "error": "Internal Server Error",
             "message": "An unexpected error occurred while processing your request.",
-            "correlation_id": correlation_id
+            "correlation_id": correlation_id,
+            "detail": str(exc)
         }
     )
 

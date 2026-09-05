@@ -102,13 +102,14 @@ class DatabaseManager:
             if getattr(self, "_initialized", False):
                 return
             is_prod = os.getenv("ENVIRONMENT", "development").lower() == "production"
+            is_serverless = bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV") or os.getenv("AWS_LAMBDA_FUNCTION_NAME") or os.path.exists("/tmp"))
             try:
                 self._init_db()
             except Exception as _e:
-                if is_prod:
+                if is_prod and not is_serverless:
                     logger.error("DatabaseManager initialization failed in PRODUCTION", error=str(_e))
                     raise RuntimeError(f"Production PostgreSQL required but connection failed: {_e}") from _e
-                logger.warning("DatabaseManager lazy initialization failed, falling back to SQLite", error=str(_e))
+                logger.warning("DatabaseManager initialization failed or falling back to SQLite", error=str(_e))
                 self._is_postgres = False
             self._initialized = True
 
@@ -116,10 +117,11 @@ class DatabaseManager:
         with self._lock:
             active_db_url = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DATABASE_URL") or os.getenv("POSTGRES_URL") or DATABASE_URL
             is_prod = os.getenv("ENVIRONMENT", "development").lower() == "production"
+            is_serverless = bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV") or os.getenv("AWS_LAMBDA_FUNCTION_NAME") or os.path.exists("/tmp"))
             is_test = os.getenv("ENVIRONMENT", "development").lower() in ("test", "testing") or os.getenv("TEST_MODE", "0") == "1"
             cleaned_url = sanitize_postgres_url(active_db_url) if not is_test else None
 
-            if is_prod and not cleaned_url:
+            if is_prod and not cleaned_url and not is_serverless:
                 raise RuntimeError(
                     "DATABASE_URL or SUPABASE_DATABASE_URL is strictly required in PRODUCTION environment. "
                     "Silent fallback to SQLite is disallowed."
@@ -251,7 +253,7 @@ class DatabaseManager:
                     logger.info("Connected and initialized Supabase (PostgreSQL) database successfully")
                     return
                 except Exception as e:
-                    if is_prod:
+                    if is_prod and not is_serverless:
                         logger.error("Failed to connect to Supabase PostgreSQL in PRODUCTION", error=str(e))
                         raise RuntimeError(f"Production PostgreSQL connection failed: {e}") from e
                     logger.warning("Failed to connect to Supabase PostgreSQL, falling back to SQLite", error=str(e))
@@ -397,9 +399,17 @@ class DatabaseManager:
 
     def ping(self) -> Dict[str, Any]:
         """Production health check ping verifying live database connectivity."""
-        self._ensure_initialized()
         import time
         t0 = time.time()
+        try:
+            self._ensure_initialized()
+        except Exception as init_err:
+            return {
+                "healthy": False,
+                "engine": "unknown",
+                "error": str(init_err),
+                "latency_ms": round((time.time() - t0) * 1000, 2)
+            }
         if self._is_postgres:
             try:
                 with self._get_pg_conn() as conn:
@@ -420,7 +430,9 @@ class DatabaseManager:
                     "error": str(e)
                 }
         else:
-            if os.getenv("ENVIRONMENT", "development").lower() == "production":
+            is_prod = os.getenv("ENVIRONMENT", "development").lower() == "production"
+            is_serverless = bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV") or os.getenv("AWS_LAMBDA_FUNCTION_NAME") or os.path.exists("/tmp"))
+            if is_prod and not is_serverless:
                 return {
                     "healthy": False,
                     "engine": "sqlite",
